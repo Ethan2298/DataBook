@@ -1,0 +1,29 @@
+{
+  "name": "databook",
+  "version": "0.1.0",
+  "description": "An AI-editable SQL database app via MCP. The MCP server IS the app — its tool definitions encode the product decisions.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "databook": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.2",
+    "better-sqlite3": "^11.9.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.13.14",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
