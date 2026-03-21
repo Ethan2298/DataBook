@@ -8,13 +8,14 @@
     "databook": "dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && shx cp -r dist mcp-server/",
     "build:renderer": "cd electron/renderer && npx vite build",
     "dev": "run-p dev:ts dev:renderer dev:electron",
     "dev:ts": "tsc --watch",
     "dev:renderer": "cd electron/renderer && npx vite",
     "dev:electron": "wait-on http://localhost:5173 && electron electron/main.cjs",
     "start": "node dist/index.js",
+    "rebuild:electron": "npx @electron/rebuild -m .",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
@@ -23,7 +24,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@modelcontextprotocol/sdk": "^1.10.2",
     "better-sqlite3": "^11.9.1",
-    "lucide": "^0.577.0",
+    "chokidar": "^4.0.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "zod": "^3.24.2"
@@ -36,6 +37,7 @@
     "@vitejs/plugin-react": "^6.0.1",
     "electron": "^34.0.0",
     "npm-run-all2": "^8.0.4",
+    "shx": "^0.3.4",
     "typescript": "^5.8.2",
     "vite": "^8.0.1",
     "wait-on": "^9.0.4"

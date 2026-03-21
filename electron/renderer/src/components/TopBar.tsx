@@ -1,88 +1,119 @@
-import type { ViewType } from "../App";
+import { useState } from "react";
+import type { ViewType, ActiveItem } from "../data";
 
 interface TopBarProps {
-  activeView: ViewType;
+  activeItem: ActiveItem;
   onViewChange: (view: ViewType) => void;
+  onCreateQueryPage: (name: string, sql: string, viewType: string) => void;
+  onRefresh: () => void;
 }
 
-export default function TopBar({ activeView, onViewChange }: TopBarProps) {
+const VIEW_OPTIONS: { type: ViewType; label: string; icon: JSX.Element }[] = [
+  {
+    type: "table",
+    label: "Table",
+    icon: (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9 3v18" />
+        <rect width="18" height="18" x="3" y="3" rx="2" />
+        <path d="M21 9H3" />
+        <path d="M21 15H3" />
+      </svg>
+    ),
+  },
+  {
+    type: "kanban",
+    label: "Board",
+    icon: (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect width="18" height="18" x="3" y="3" rx="2" />
+        <path d="M8 7v7" />
+        <path d="M12 7v4" />
+        <path d="M16 7v9" />
+      </svg>
+    ),
+  },
+  {
+    type: "calendar",
+    label: "Calendar",
+    icon: (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+        <line x1="16" y1="2" x2="16" y2="6" />
+        <line x1="8" y1="2" x2="8" y2="6" />
+        <line x1="3" y1="10" x2="21" y2="10" />
+      </svg>
+    ),
+  },
+];
+
+export default function TopBar({ activeItem, onViewChange, onCreateQueryPage, onRefresh }: TopBarProps) {
+  const [showSaveInput, setShowSaveInput] = useState(false);
+  const [saveName, setSaveName] = useState("");
+
+  const handleSave = () => {
+    if (saveName.trim()) {
+      onCreateQueryPage(saveName.trim(), activeItem.sql, activeItem.viewType);
+      setSaveName("");
+      setShowSaveInput(false);
+    }
+  };
+
   return (
     <div className="topbar">
       <div className="topbar-left">
-        <button
-          className={`tab ${activeView === "Table" ? "active" : ""}`}
-          onClick={() => onViewChange("Table")}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 3v18" />
-            <rect width="18" height="18" x="3" y="3" rx="2" />
-            <path d="M21 9H3" />
-            <path d="M21 15H3" />
-          </svg>
-          Table
-        </button>
-        <button
-          className={`tab ${activeView === "Board" ? "active" : ""}`}
-          onClick={() => onViewChange("Board")}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect width="18" height="18" x="3" y="3" rx="2" />
-            <path d="M8 7v7" />
-            <path d="M12 7v4" />
-            <path d="M16 7v9" />
-          </svg>
-          Board
-        </button>
-        <button
-          className={`tab ${activeView === "Calendar" ? "active" : ""}`}
-          onClick={() => onViewChange("Calendar")}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-            <line x1="16" y1="2" x2="16" y2="6" />
-            <line x1="8" y1="2" x2="8" y2="6" />
-            <line x1="3" y1="10" x2="21" y2="10" />
-          </svg>
-          Calendar
-        </button>
-        <button className="tab-add">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </button>
+        <span className="topbar-title">{activeItem.name}</span>
+        <span className="topbar-kind">{activeItem.kind === "table" ? "table" : activeItem.viewType}</span>
+
+        {VIEW_OPTIONS.map(({ type, label, icon }) => (
+          <button
+            key={type}
+            className={`tab ${activeItem.viewType === type ? "active" : ""}`}
+            onClick={() => onViewChange(type)}
+          >
+            {icon}
+            {label}
+          </button>
+        ))}
       </div>
       <div className="topbar-right">
-        <button className="action-btn">
+        <button className="action-btn" onClick={onRefresh} title="Refresh">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+            <path d="M21 2v6h-6" />
+            <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+            <path d="M3 22v-6h6" />
+            <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
           </svg>
-          Filter
+          Refresh
         </button>
-        <button className="action-btn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="4" y1="6" x2="16" y2="6" />
-            <line x1="4" y1="12" x2="12" y2="12" />
-            <line x1="4" y1="18" x2="8" y2="18" />
-          </svg>
-          Sort
-        </button>
-        <button className="action-btn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="7" height="7" />
-            <rect x="14" y="3" width="7" height="7" />
-            <rect x="3" y="14" width="7" height="7" />
-            <rect x="14" y="14" width="7" height="7" />
-          </svg>
-          Group
-        </button>
-        <button className="new-btn">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          New
-        </button>
+
+        {activeItem.kind === "table" && !showSaveInput && (
+          <button className="action-btn" onClick={() => setShowSaveInput(true)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+              <polyline points="17 21 17 13 7 13 7 21" />
+              <polyline points="7 3 7 8 15 8" />
+            </svg>
+            Save View
+          </button>
+        )}
+
+        {showSaveInput && (
+          <div className="topbar-save-input">
+            <input
+              type="text"
+              className="sidebar-inline-input"
+              placeholder="View name..."
+              value={saveName}
+              onChange={(e) => setSaveName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSave();
+                if (e.key === "Escape") setShowSaveInput(false);
+              }}
+              autoFocus
+            />
+          </div>
+        )}
       </div>
     </div>
   );

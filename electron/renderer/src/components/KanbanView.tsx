@@ -10,33 +10,46 @@ import {
   type DragEndEvent,
   type DragOverEvent,
 } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useState, useCallback } from "react";
-import Badge from "./Badge";
-import { STATUSES, STATUS_CONFIG, type Task, type Status } from "../data";
+import { useState, useEffect, useMemo } from "react";
+import type { Row } from "../data";
 
 interface KanbanViewProps {
-  tasks: Task[];
-  onMoveTask: (taskId: string, newStatus: Status, newIndex?: number) => void;
+  rows: Row[];
+  groupByCol: string;
+  titleCol: string;
+  columns: string[];
 }
 
-function KanbanCard({ task, cardClass }: { task: Task; cardClass: string }) {
+const COLORS = [
+  { bg: "rgba(217, 115, 13, 0.06)", card: "rgba(217, 115, 13, 0.12)", border: "rgba(217, 115, 13, 0.2)", dot: "#D9730D" },
+  { bg: "rgba(35, 131, 226, 0.06)", card: "rgba(35, 131, 226, 0.12)", border: "rgba(35, 131, 226, 0.2)", dot: "#2383E2" },
+  { bg: "rgba(77, 171, 111, 0.06)", card: "rgba(77, 171, 111, 0.12)", border: "rgba(77, 171, 111, 0.2)", dot: "#4DAB6F" },
+  { bg: "rgba(224, 62, 62, 0.06)", card: "rgba(224, 62, 62, 0.12)", border: "rgba(224, 62, 62, 0.2)", dot: "#E03E3E" },
+  { bg: "rgba(155, 154, 151, 0.06)", card: "rgba(155, 154, 151, 0.12)", border: "rgba(155, 154, 151, 0.2)", dot: "#9B9A97" },
+  { bg: "rgba(105, 64, 165, 0.06)", card: "rgba(105, 64, 165, 0.12)", border: "rgba(105, 64, 165, 0.2)", dot: "#6940A5" },
+];
+
+function KanbanCard({ row, titleCol, columns, color }: { row: Row; titleCol: string; columns: string[]; color: typeof COLORS[0] }) {
+  const metaCols = columns.filter((c) => c !== titleCol);
   return (
-    <div className={`kanban-card ${cardClass}`}>
-      <span className="kanban-card-title">{task.title}</span>
-      <div className="kanban-card-meta">
-        <Badge dot={task.priorityDot} label={task.priority} className="kanban-badge" />
-        <span className="kanban-card-date">{task.date}</span>
-      </div>
+    <div className="kanban-card" style={{ background: color.card, borderColor: color.border }}>
+      <span className="kanban-card-title">{String(row[titleCol] ?? "")}</span>
+      {metaCols.length > 0 && (
+        <div className="kanban-card-meta">
+          {metaCols.slice(0, 3).map((col) => (
+            <span key={col} className="kanban-card-date">{String(row[col] ?? "")}</span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function SortableCard({ task, cardClass }: { task: Task; cardClass: string }) {
+function SortableCard({ row, titleCol, columns, color, id }: { row: Row; titleCol: string; columns: string[]; color: typeof COLORS[0]; id: string }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: task.id,
-    data: { status: task.status },
+    id,
   });
 
   const style = {
@@ -48,104 +61,93 @@ function SortableCard({ task, cardClass }: { task: Task; cardClass: string }) {
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <KanbanCard task={task} cardClass={cardClass} />
+      <KanbanCard row={row} titleCol={titleCol} columns={columns} color={color} />
     </div>
   );
 }
 
-function DroppableColumn({ status, taskIds, children }: { status: Status; taskIds: string[]; children: React.ReactNode }) {
-  const config = STATUS_CONFIG[status];
-  const { setNodeRef } = useDroppable({ id: `column-${status}`, data: { status } });
+function DroppableColumn({ groupValue, ids, color, children }: { groupValue: string; ids: string[]; color: typeof COLORS[0]; children: React.ReactNode }) {
+  const { setNodeRef } = useDroppable({ id: `column-${groupValue}` });
 
   return (
-    <div ref={setNodeRef} className={`kanban-column ${config.columnClass}`}>
+    <div ref={setNodeRef} className="kanban-column" style={{ background: color.bg }}>
       <div className="kanban-column-header">
-        <span className={`badge-dot ${config.dot}`} />
-        <span>{status}</span>
+        <span className="badge-dot" style={{ background: color.dot, width: 7, height: 7, borderRadius: "50%", flexShrink: 0 }} />
+        <span>{groupValue || "(empty)"}</span>
       </div>
-      <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
+      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         {children}
       </SortableContext>
     </div>
   );
 }
 
-export default function KanbanView({ tasks, onMoveTask }: KanbanViewProps) {
-  const [activeTask, setActiveTask] = useState<Task | null>(null);
+export default function KanbanView({ rows, groupByCol, titleCol, columns }: KanbanViewProps) {
+  const [localRows, setLocalRows] = useState<Row[]>(rows);
+  const [activeRow, setActiveRow] = useState<Row | null>(null);
+
+  // Sync local state when props change (e.g. after refresh)
+  useEffect(() => { setLocalRows(rows); }, [rows]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
-  const tasksByStatus = useCallback(
-    (status: Status) => tasks.filter((t) => t.status === status),
-    [tasks]
-  );
-
-  const findStatus = (id: string | number): Status | null => {
-    // Check if it's a column droppable
-    const colId = String(id);
-    if (colId.startsWith("column-")) {
-      return colId.replace("column-", "") as Status;
+  // Get unique group values
+  const groups = useMemo(() => {
+    const seen = new Set<string>();
+    for (const row of localRows) {
+      seen.add(String(row[groupByCol] ?? ""));
     }
-    // It's a task id
-    const task = tasks.find((t) => t.id === String(id));
-    return task?.status ?? null;
-  };
+    return Array.from(seen);
+  }, [localRows, groupByCol]);
+
+  // Build row-id to row index map (using index as stable id)
+  const rowId = (idx: number) => `row-${idx}`;
 
   const handleDragStart = (event: DragStartEvent) => {
-    const task = tasks.find((t) => t.id === String(event.active.id));
-    if (task) setActiveTask(task);
+    const idx = Number(String(event.active.id).replace("row-", ""));
+    if (localRows[idx]) setActiveRow(localRows[idx]);
   };
 
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
     if (!over) return;
 
-    const activeId = String(active.id);
-    const activeStatus = findStatus(activeId);
-    const overStatus = findStatus(over.id);
+    const activeIdx = Number(String(active.id).replace("row-", ""));
+    const overId = String(over.id);
 
-    if (!activeStatus || !overStatus || activeStatus === overStatus) return;
-
-    // Move to the new column immediately for visual feedback
-    const overTasks = tasksByStatus(overStatus);
-    const overTask = tasks.find((t) => t.id === String(over.id));
-    const newIndex = overTask ? overTasks.indexOf(overTask) : overTasks.length;
-
-    onMoveTask(activeId, overStatus, newIndex);
+    if (overId.startsWith("column-")) {
+      // Dragged over a column — move to that group
+      const targetGroup = overId.replace("column-", "");
+      setLocalRows((prev) => {
+        if (String(prev[activeIdx]?.[groupByCol] ?? "") === targetGroup) return prev;
+        const updated = [...prev];
+        updated[activeIdx] = { ...updated[activeIdx], [groupByCol]: targetGroup };
+        return updated;
+      });
+    } else {
+      // Dragged over another card — reorder
+      const overIdx = Number(overId.replace("row-", ""));
+      if (activeIdx === overIdx) return;
+      setLocalRows((prev) => {
+        const updated = [...prev];
+        const [moved] = updated.splice(activeIdx, 1);
+        // Update group if crossing columns
+        const targetGroup = String(prev[overIdx]?.[groupByCol] ?? "");
+        if (String(moved[groupByCol] ?? "") !== targetGroup) {
+          moved[groupByCol] = targetGroup;
+        }
+        // Insert at the over position (adjusted for removal)
+        const insertIdx = overIdx > activeIdx ? overIdx - 1 : overIdx;
+        updated.splice(insertIdx, 0, moved);
+        return updated;
+      });
+    }
   };
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveTask(null);
-
-    if (!over) return;
-
-    const activeId = String(active.id);
-    const overId = String(over.id);
-    const activeTask = tasks.find((t) => t.id === activeId);
-    if (!activeTask) return;
-
-    const overStatus = findStatus(over.id);
-    if (!overStatus) return;
-
-    // Same column reorder
-    if (activeTask.status === overStatus && activeId !== overId) {
-      const columnTasks = tasksByStatus(overStatus);
-      const oldIndex = columnTasks.findIndex((t) => t.id === activeId);
-      const newIndex = columnTasks.findIndex((t) => t.id === overId);
-      if (oldIndex !== -1 && newIndex !== -1) {
-        onMoveTask(activeId, overStatus, newIndex);
-      }
-    }
-    // Cross-column (already handled in dragOver, but finalize position)
-    else if (activeTask.status !== overStatus) {
-      const overTask = tasks.find((t) => t.id === overId);
-      const overTasks = tasksByStatus(overStatus);
-      const newIndex = overTask ? overTasks.indexOf(overTask) : overTasks.length;
-      onMoveTask(activeId, overStatus, newIndex);
-    }
+  const handleDragEnd = (_event: DragEndEvent) => {
+    setActiveRow(null);
   };
 
   return (
@@ -158,23 +160,36 @@ export default function KanbanView({ tasks, onMoveTask }: KanbanViewProps) {
         onDragEnd={handleDragEnd}
       >
         <div className="kanban-board">
-          {STATUSES.map((status) => {
-            const columnTasks = tasksByStatus(status);
-            const config = STATUS_CONFIG[status];
+          {groups.map((group, gi) => {
+            const color = COLORS[gi % COLORS.length];
+            const groupRows = localRows
+              .map((r, i) => ({ row: r, idx: i }))
+              .filter(({ row }) => String(row[groupByCol] ?? "") === group);
+            const ids = groupRows.map(({ idx }) => rowId(idx));
+
             return (
-              <DroppableColumn key={status} status={status} taskIds={columnTasks.map((t) => t.id)}>
-                {columnTasks.map((task) => (
-                  <SortableCard key={task.id} task={task} cardClass={config.cardClass} />
+              <DroppableColumn key={group} groupValue={group} ids={ids} color={color}>
+                {groupRows.map(({ row, idx }) => (
+                  <SortableCard
+                    key={rowId(idx)}
+                    id={rowId(idx)}
+                    row={row}
+                    titleCol={titleCol}
+                    columns={columns}
+                    color={color}
+                  />
                 ))}
               </DroppableColumn>
             );
           })}
         </div>
         <DragOverlay>
-          {activeTask && (
+          {activeRow && (
             <KanbanCard
-              task={activeTask}
-              cardClass={STATUS_CONFIG[activeTask.status].cardClass}
+              row={activeRow}
+              titleCol={titleCol}
+              columns={columns}
+              color={COLORS[0]}
             />
           )}
         </DragOverlay>

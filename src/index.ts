@@ -120,7 +120,7 @@ const ColumnDefSchema = z.object({
   name: z.string().describe("Column name"),
   type: z
     .string()
-    .describe("SQLite type: TEXT, INTEGER, REAL, BLOB, NUMERIC"),
+    .describe("SQLite type: TEXT, INTEGER, REAL, BLOB, NUMERIC, BOOLEAN (renders as checkbox in DataBook UI)"),
   primaryKey: z.boolean().optional().describe("Mark as PRIMARY KEY"),
   autoIncrement: z.boolean().optional().describe("Enable AUTOINCREMENT (requires INTEGER PRIMARY KEY)"),
   notNull: z.boolean().optional().describe("Add NOT NULL constraint"),
@@ -421,6 +421,116 @@ server.tool(
     manager.deleteQueryPage(name);
     return {
       content: [{ type: "text", text: `Deleted query page "${name}".` }],
+    };
+  }
+);
+
+// ── Column Options (Status Tags) ─────────────────────────────────────────────
+
+server.tool(
+  "add_column_option",
+  "Add a status/select option to a STATUS column. These options define the allowed values shown as colored tags in the DataBook UI.",
+  {
+    table: z.string().describe("Table name"),
+    column: z.string().describe("Column name (must be a STATUS type column)"),
+    value: z.string().describe("Option value/label"),
+    color: z
+      .string()
+      .default("#9B9A97")
+      .describe(
+        "Hex color for the tag dot, e.g. '#4DAB6F' for green, '#2383E2' for blue, '#E03E3E' for red, '#DFAB01' for yellow, '#9B59B6' for purple"
+      ),
+  },
+  ({ table, column, value, color }) => {
+    manager.addColumnOption(table, column, value, color);
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Added option "${value}" (${color}) to ${table}.${column}`,
+        },
+      ],
+    };
+  }
+);
+
+server.tool(
+  "remove_column_option",
+  "Remove a status/select option from a STATUS column",
+  {
+    table: z.string().describe("Table name"),
+    column: z.string().describe("Column name"),
+    value: z.string().describe("Option value to remove"),
+  },
+  ({ table, column, value }) => {
+    manager.removeColumnOption(table, column, value);
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Removed option "${value}" from ${table}.${column}`,
+        },
+      ],
+    };
+  }
+);
+
+server.tool(
+  "list_column_options",
+  "List all status/select options for a column or all columns in the selected database",
+  {
+    table: z.string().optional().describe("Table name (omit to list all)"),
+    column: z
+      .string()
+      .optional()
+      .describe("Column name (omit to list all for the table)"),
+  },
+  ({ table, column }) => {
+    if (table && column) {
+      const options = manager.getColumnOptions(table, column);
+      if (options.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `No options defined for ${table}.${column}`,
+            },
+          ],
+        };
+      }
+      const lines = options.map((o) => `  • ${o.value} (${o.color})`);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Options for ${table}.${column}:\n${lines.join("\n")}`,
+          },
+        ],
+      };
+    }
+    const all = manager.getAllColumnOptions();
+    const keys = Object.keys(all);
+    if (keys.length === 0) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "No column options defined in this database.",
+          },
+        ],
+      };
+    }
+    const sections = keys.map((key) => {
+      const lines = all[key].map((o) => `    • ${o.value} (${o.color})`);
+      return `  ${key}:\n${lines.join("\n")}`;
+    });
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Column options:\n${sections.join("\n")}`,
+        },
+      ],
     };
   }
 );

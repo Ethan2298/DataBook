@@ -1,9 +1,10 @@
-import { useState } from "react";
-import Badge from "./Badge";
-import type { Task } from "../data";
+import { useState, useMemo } from "react";
+import type { Row } from "../data";
 
 interface CalendarViewProps {
-  tasks: Task[];
+  rows: Row[];
+  dateCol: string;
+  titleCol: string;
 }
 
 const MONTH_NAMES = [
@@ -13,18 +14,27 @@ const MONTH_NAMES = [
 
 const DAY_LABELS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 
-const MONTH_ABBRS: Record<string, number> = {
-  Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
-  Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
-};
+function parseDate(val: unknown): Date | null {
+  if (val == null) return null;
+  const s = String(val);
 
-function parseTaskDate(dateStr: string): Date | null {
-  // Format: "Mar 12, 2025"
-  const match = dateStr.match(/^(\w{3})\s+(\d{1,2}),\s+(\d{4})$/);
-  if (!match) return null;
-  const month = MONTH_ABBRS[match[1]];
-  if (month === undefined) return null;
-  return new Date(Number(match[3]), month, Number(match[2]));
+  // ISO: 2025-03-12
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+
+  // "Mar 12, 2025" style
+  const MONTH_ABBRS: Record<string, number> = {
+    Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+    Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
+  };
+  const abbr = s.match(/^(\w{3})\s+(\d{1,2}),\s+(\d{4})$/);
+  if (abbr && MONTH_ABBRS[abbr[1]] !== undefined) {
+    return new Date(Number(abbr[3]), MONTH_ABBRS[abbr[1]], Number(abbr[2]));
+  }
+
+  // Fallback: try Date constructor
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
 }
 
 function getCalendarWeeks(year: number, month: number): Date[][] {
@@ -47,23 +57,25 @@ function getCalendarWeeks(year: number, month: number): Date[][] {
   return weeks;
 }
 
-function tasksForDate(tasks: Task[], date: Date): Task[] {
-  return tasks.filter((t) => {
-    const d = parseTaskDate(t.date);
-    return (
-      d !== null &&
-      d.getFullYear() === date.getFullYear() &&
-      d.getMonth() === date.getMonth() &&
-      d.getDate() === date.getDate()
-    );
-  });
-}
-
-export default function CalendarView({ tasks }: CalendarViewProps) {
-  const [year, setYear] = useState(2025);
-  const [month, setMonth] = useState(2); // March (0-indexed)
+export default function CalendarView({ rows, dateCol, titleCol }: CalendarViewProps) {
+  const [year, setYear] = useState(() => new Date().getFullYear());
+  const [month, setMonth] = useState(() => new Date().getMonth());
 
   const weeks = getCalendarWeeks(year, month);
+
+  // Build date → rows map
+  const dateMap = useMemo(() => {
+    const map = new Map<string, Row[]>();
+    for (const row of rows) {
+      const d = parseDate(row[dateCol]);
+      if (!d) continue;
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      const arr = map.get(key) ?? [];
+      arr.push(row);
+      map.set(key, arr);
+    }
+    return map;
+  }, [rows, dateCol]);
 
   const goToToday = () => {
     const now = new Date();
@@ -72,29 +84,19 @@ export default function CalendarView({ tasks }: CalendarViewProps) {
   };
 
   const prevMonth = () => {
-    if (month === 0) {
-      setMonth(11);
-      setYear(year - 1);
-    } else {
-      setMonth(month - 1);
-    }
+    if (month === 0) { setMonth(11); setYear(year - 1); }
+    else setMonth(month - 1);
   };
 
   const nextMonth = () => {
-    if (month === 11) {
-      setMonth(0);
-      setYear(year + 1);
-    } else {
-      setMonth(month + 1);
-    }
+    if (month === 11) { setMonth(0); setYear(year + 1); }
+    else setMonth(month + 1);
   };
 
   return (
     <div className="view-calendar">
       <div className="calendar-month-header">
-        <button className="calendar-today-btn" onClick={goToToday}>
-          Today
-        </button>
+        <button className="calendar-today-btn" onClick={goToToday}>Today</button>
         <div className="calendar-month-nav">
           <button className="calendar-nav" onClick={prevMonth}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -107,9 +109,7 @@ export default function CalendarView({ tasks }: CalendarViewProps) {
             </svg>
           </button>
         </div>
-        <span className="calendar-month-title">
-          {MONTH_NAMES[month]} {year}
-        </span>
+        <span className="calendar-month-title">{MONTH_NAMES[month]} {year}</span>
       </div>
 
       <div className="calendar-day-headers">
@@ -123,30 +123,16 @@ export default function CalendarView({ tasks }: CalendarViewProps) {
           <div key={wi} className="calendar-week">
             {week.map((date, di) => {
               const isOutside = date.getMonth() !== month;
-              const dayTasks = tasksForDate(tasks, date);
+              const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+              const dayRows = dateMap.get(key) ?? [];
               return (
-                <div
-                  key={di}
-                  className={`calendar-cell${isOutside ? " outside" : ""}`}
-                >
+                <div key={di} className={`calendar-cell${isOutside ? " outside" : ""}`}>
                   <div className="calendar-cell-header">
-                    <button className="calendar-add-btn">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="12" y1="5" x2="12" y2="19" />
-                        <line x1="5" y1="12" x2="19" y2="12" />
-                      </svg>
-                    </button>
-                    <span className="calendar-date-number">
-                      {date.getDate()}
-                    </span>
+                    <span className="calendar-date-number">{date.getDate()}</span>
                   </div>
-                  {dayTasks.map((t) => (
-                    <div key={t.id} className="calendar-task">
-                      <span className="calendar-task-title">{t.title}</span>
-                      <div className="calendar-task-chips">
-                        <Badge dot={t.priorityDot} label={t.priority} className="calendar-badge" />
-                        <Badge dot={t.statusDot} label={t.status} className="calendar-badge" />
-                      </div>
+                  {dayRows.map((row, ri) => (
+                    <div key={ri} className="calendar-task">
+                      <span className="calendar-task-title">{String(row[titleCol] ?? "")}</span>
                     </div>
                   ))}
                 </div>

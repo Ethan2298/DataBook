@@ -38,6 +38,18 @@ export class DatabaseManager {
       );
       CREATE UNIQUE INDEX IF NOT EXISTS idx_query_pages_name_db
         ON query_pages (name, database);
+
+      CREATE TABLE IF NOT EXISTS column_options (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        database TEXT NOT NULL,
+        "table" TEXT NOT NULL,
+        "column" TEXT NOT NULL,
+        value TEXT NOT NULL,
+        color TEXT NOT NULL DEFAULT '#9B9A97',
+        sort_order INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_column_options_unique
+        ON column_options (database, "table", "column", value);
     `);
   }
 
@@ -307,6 +319,67 @@ export class DatabaseManager {
     }
   }
 
+  // ── Column Options (STATUS column values) ──────────────────────────────────
+
+  getColumnOptions(table: string, column: string): ColumnOption[] {
+    const dbName = this.getCurrentDbName();
+    return this.metaDb
+      .prepare(
+        `SELECT value, color, sort_order FROM column_options
+         WHERE database = ? AND "table" = ? AND "column" = ?
+         ORDER BY sort_order, value`
+      )
+      .all(dbName, table, column) as ColumnOption[];
+  }
+
+  getAllColumnOptions(): Record<string, ColumnOption[]> {
+    const dbName = this.getCurrentDbName();
+    const rows = this.metaDb
+      .prepare(
+        `SELECT "table", "column", value, color, sort_order FROM column_options
+         WHERE database = ?
+         ORDER BY "table", "column", sort_order, value`
+      )
+      .all(dbName) as (ColumnOption & { table: string; column: string })[];
+
+    const result: Record<string, ColumnOption[]> = {};
+    for (const row of rows) {
+      const key = `${row.table}.${row.column}`;
+      if (!result[key]) result[key] = [];
+      result[key].push({ value: row.value, color: row.color, sort_order: row.sort_order });
+    }
+    return result;
+  }
+
+  addColumnOption(table: string, column: string, value: string, color: string): void {
+    const dbName = this.getCurrentDbName();
+    // Get next sort order
+    const maxRow = this.metaDb
+      .prepare(
+        `SELECT COALESCE(MAX(sort_order), -1) as max_sort FROM column_options
+         WHERE database = ? AND "table" = ? AND "column" = ?`
+      )
+      .get(dbName, table, column) as { max_sort: number };
+    this.metaDb
+      .prepare(
+        `INSERT INTO column_options (database, "table", "column", value, color, sort_order)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run(dbName, table, column, value, color, maxRow.max_sort + 1);
+  }
+
+  removeColumnOption(table: string, column: string, value: string): void {
+    const dbName = this.getCurrentDbName();
+    const result = this.metaDb
+      .prepare(
+        `DELETE FROM column_options WHERE database = ? AND "table" = ? AND "column" = ? AND value = ?`
+      )
+      .run(dbName, table, column, value);
+    if (result.changes === 0) {
+      throw new Error(`Option "${value}" not found for ${table}.${column}`);
+    }
+  }
+
   close() {
     this.currentDb?.close();
     this.metaDb.close();
@@ -321,6 +394,12 @@ export interface ColumnDef {
   notNull?: boolean;
   unique?: boolean;
   defaultValue?: string;
+}
+
+export interface ColumnOption {
+  value: string;
+  color: string;
+  sort_order: number;
 }
 
 export type AlterOperation =
