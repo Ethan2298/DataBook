@@ -3,6 +3,7 @@ import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import TableView from "./components/TableView";
 import KanbanView from "./components/KanbanView";
+import CalendarView from "./components/CalendarView";
 import { initialTasks, type Task, type Status } from "./data";
 
 export type ViewType = "Table" | "Board" | "Calendar";
@@ -59,6 +60,7 @@ export default function App() {
         <TopBar activeView={activeView} onViewChange={setActiveView} />
         {activeView === "Table" && <TableView tasks={tasks} />}
         {activeView === "Board" && <KanbanView tasks={tasks} onMoveTask={moveTask} />}
+        {activeView === "Calendar" && <CalendarView tasks={tasks} />}
       </main>
     </div>
   );
