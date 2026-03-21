@@ -15,7 +15,7 @@ let manager = null;
 
 async function getManager() {
   if (manager) return manager;
-  const dbManagerPath = path.join(app.getAppPath(), 'dist', 'database-manager.js');
+  const dbManagerPath = path.join(__dirname, '..', 'dist', 'database-manager.js');
   const { DatabaseManager } = await import(
     /* webpackIgnore: true */
     'file://' + dbManagerPath.replace(/\\/g, '/')
