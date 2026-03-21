@@ -535,6 +535,60 @@ server.tool(
   }
 );
 
+// ── Column order ────────────────────────────────────────────────────────────
+
+server.tool(
+  "reorder_columns",
+  "Set the display order of columns for a table. Provide the full list of column names in the desired order.",
+  {
+    table: z.string().describe("Table name"),
+    columns: z
+      .array(z.string())
+      .min(1)
+      .describe("Column names in desired display order"),
+  },
+  ({ table, columns }) => {
+    manager.setColumnOrder(table, columns);
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Column order for "${table}" updated: ${columns.join(", ")}`,
+        },
+      ],
+    };
+  }
+);
+
+server.tool(
+  "get_column_order",
+  "Get the current display order of columns for a table. Returns empty if no custom order is set.",
+  {
+    table: z.string().describe("Table name"),
+  },
+  ({ table }) => {
+    const order = manager.getColumnOrder(table);
+    if (order.length === 0) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `No custom column order set for "${table}". Using default schema order.`,
+          },
+        ],
+      };
+    }
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Column order for "${table}": ${order.join(", ")}`,
+        },
+      ],
+    };
+  }
+);
+
 // ── Start server ─────────────────────────────────────────────────────────────
 
 async function main() {

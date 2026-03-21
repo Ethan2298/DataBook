@@ -41,6 +41,9 @@ interface DataBookAPI {
   getAllColumnOptions(): Promise<Record<string, ColumnOption[]>>;
   addColumnOption(table: string, column: string, value: string, color: string): Promise<void>;
   removeColumnOption(table: string, column: string, value: string): Promise<void>;
+
+  getColumnOrder(table: string): Promise<string[]>;
+  setColumnOrder(table: string, columns: string[]): Promise<void>;
 }
 
 declare global {

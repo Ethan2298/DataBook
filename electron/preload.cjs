@@ -41,4 +41,8 @@ contextBridge.exposeInMainWorld('databook', {
   getAllColumnOptions: () => ipcRenderer.invoke('db:getAllColumnOptions'),
   addColumnOption: (table, column, value, color) => ipcRenderer.invoke('db:addColumnOption', table, column, value, color),
   removeColumnOption: (table, column, value) => ipcRenderer.invoke('db:removeColumnOption', table, column, value),
+
+  // Column Order
+  getColumnOrder: (table) => ipcRenderer.invoke('db:getColumnOrder', table),
+  setColumnOrder: (table, columns) => ipcRenderer.invoke('db:setColumnOrder', table, columns),
 });

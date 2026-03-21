@@ -50,6 +50,16 @@ export class DatabaseManager {
       );
       CREATE UNIQUE INDEX IF NOT EXISTS idx_column_options_unique
         ON column_options (database, "table", "column", value);
+
+      CREATE TABLE IF NOT EXISTS column_order (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        database TEXT NOT NULL,
+        "table" TEXT NOT NULL,
+        column_name TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_column_order_unique
+        ON column_order (database, "table", column_name);
     `);
   }
 
@@ -378,6 +388,32 @@ export class DatabaseManager {
     if (result.changes === 0) {
       throw new Error(`Option "${value}" not found for ${table}.${column}`);
     }
+  }
+
+  // ── Column order ────────────────────────────────────────────────────────────
+
+  getColumnOrder(table: string): string[] {
+    const dbName = this.getCurrentDbName();
+    const rows = this.metaDb
+      .prepare(
+        `SELECT column_name FROM column_order WHERE database = ? AND "table" = ? ORDER BY sort_order`
+      )
+      .all(dbName, table) as { column_name: string }[];
+    return rows.map((r) => r.column_name);
+  }
+
+  setColumnOrder(table: string, columns: string[]): void {
+    const dbName = this.getCurrentDbName();
+    this.metaDb.prepare(`DELETE FROM column_order WHERE database = ? AND "table" = ?`).run(dbName, table);
+    const insert = this.metaDb.prepare(
+      `INSERT INTO column_order (database, "table", column_name, sort_order) VALUES (?, ?, ?, ?)`
+    );
+    const tx = this.metaDb.transaction(() => {
+      for (let i = 0; i < columns.length; i++) {
+        insert.run(dbName, table, columns[i], i);
+      }
+    });
+    tx();
   }
 
   close() {

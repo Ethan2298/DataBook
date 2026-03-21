@@ -65,6 +65,10 @@ handle('db:getAllColumnOptions', (m) => m.getAllColumnOptions());
 handle('db:addColumnOption', (m, table, column, value, color) => m.addColumnOption(table, column, value, color));
 handle('db:removeColumnOption', (m, table, column, value) => m.removeColumnOption(table, column, value));
 
+// ── Column Order ────────────────────────────────────────────────────────────
+handle('db:getColumnOrder', (m, table) => m.getColumnOrder(table));
+handle('db:setColumnOrder', (m, table, columns) => m.setColumnOrder(table, columns));
+
 // ── File watcher for external changes (e.g. MCP server) ─────────────────────
 
 let mainWindow = null;
@@ -83,6 +87,7 @@ function startWatching() {
 
   fsWatcher.on('all', (_eventType, filePath) => {
     if (!filePath.endsWith('.db')) return;
+    if (path.basename(filePath).startsWith('.meta')) return;
     // Debounce: collapse rapid changes into a single refresh
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {

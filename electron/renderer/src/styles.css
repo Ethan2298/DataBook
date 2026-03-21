@@ -311,15 +311,30 @@ body {
   overflow: hidden;
 }
 
-.table-header {
-  display: flex;
-  align-items: center;
-  padding: 0 24px;
-  background: #191919;
-  border-bottom: 1px solid #2F2F2F;
+.table-scroll {
+  flex: 1;
+  overflow: auto;
 }
 
-.table-header .col {
+/* ── Grid layout ── */
+
+.table-grid {
+  display: grid;
+  width: max-content;
+  min-width: 100%;
+}
+
+/* ── Header cells ── */
+
+.table-header-row {
+  display: grid;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #191919;
+}
+
+.th {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -329,37 +344,68 @@ body {
   line-height: 16px;
   letter-spacing: 0.02em;
   color: #9B9A97;
+  background: #191919;
+  border-bottom: 1px solid #2F2F2F;
+  cursor: default;
+  position: relative;
 }
 
-.col-dynamic {
-  flex: 1;
-  min-width: 80px;
-  max-width: 300px;
+.th:hover {
+  background: #262626;
 }
 
-.col-actions {
-  width: 32px;
-  flex-shrink: 0;
+.th-actions {
+  background: #191919;
+  border-bottom: 1px solid #2F2F2F;
 }
 
-/* ── Rows ── */
-
-.table-body {
-  flex: 1;
-  overflow-y: auto;
+.col-resize-handle {
+  position: absolute;
+  right: -10px;
+  top: 0;
+  bottom: 0;
+  width: 21px;
+  cursor: col-resize;
+  z-index: 10;
 }
 
-.table-row {
-  display: flex;
-  align-items: center;
-  padding: 0 24px;
-  border-bottom: 1px solid #262626;
+.col-resize-handle::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: transparent;
+  transition: background 0.1s;
 }
 
-.table-row .col {
+/* Highlight the specific handle being hovered or dragged */
+.col-resize-handle:hover::after,
+.col-resize-handle:active::after {
+  background: #2383E2;
+}
+
+/* ── Data cells ── */
+
+.td {
   display: flex;
   align-items: center;
   padding: 9px 8px;
+  border-bottom: 1px solid #262626;
+  overflow: hidden;
+}
+
+.td-actions {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #262626;
+}
+
+/* ── Row hover (via JS display:contents, target cells by adjacent sibling grid row) ── */
+
+.table-row {
+  display: contents;
 }
 
 .cell-text {
@@ -397,10 +443,8 @@ body {
 }
 
 /* Checkbox cells */
-.col-checkbox {
+.td-checkbox {
   justify-content: center;
-  max-width: 60px;
-  min-width: 60px;
 }
 
 .checkbox-cell {
@@ -577,7 +621,7 @@ body {
   transition: opacity 0.1s;
 }
 
-.table-row:hover .row-delete-btn {
+.row-delete-btn.row-delete-visible {
   opacity: 1;
 }
 
@@ -586,7 +630,7 @@ body {
   background: rgba(224, 62, 62, 0.1);
 }
 
-.new-row-input {
+.new-row-input > .td {
   background: rgba(255, 255, 255, 0.02);
 }
 

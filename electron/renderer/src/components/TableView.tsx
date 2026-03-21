@@ -1,5 +1,25 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragStartEvent,
+  type DragEndEvent,
+  type Modifier,
+} from "@dnd-kit/core";
+import { SortableContext, useSortable, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type { Row, ColumnInfo, ActiveItem, ColumnOptionsMap } from "../data";
+import api from "../api";
+
+const restrictToHorizontal: Modifier = ({ transform }) => ({
+  ...transform,
+  y: 0,
+});
+
+const DEFAULT_COL_WIDTH = 180;
 
 interface TableViewProps {
   rows: Row[];
@@ -17,20 +37,44 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
   const [showNewRow, setShowNewRow] = useState(false);
   const [newRowValues, setNewRowValues] = useState<Row>({});
   const [statusDropdown, setStatusDropdown] = useState<{ rowIdx: number; col: string } | null>(null);
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const [columnOrder, setColumnOrder] = useState<string[] | null>(null);
+  const [activeDragCol, setActiveDragCol] = useState<string | null>(null);
+  const [hoveredRow, setHoveredRow] = useState<number | null>(null);
+  const resizingRef = useRef<{ col: string; startX: number; startWidth: number } | null>(null);
+  const columnWidthsRef = useRef(columnWidths);
+  columnWidthsRef.current = columnWidths;
 
-  // Derive column names, hiding PK/id columns from display
-  const pkCol = columns.find((c) => c.pk)?.name ?? "id";
-  const allColNames = columns.length > 0
-    ? columns.map((c) => c.name)
-    : rows.length > 0
-      ? Object.keys(rows[0])
-      : [];
-  const colNames = allColNames.filter((c) => {
-    const colDef = columns.find((cd) => cd.name === c);
-    if (colDef?.pk) return false;
-    if (c.toLowerCase() === "id" || c.toLowerCase() === "rowid") return false;
-    return true;
-  });
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
+
+  const handleResizeStart = useCallback((col: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startWidth = columnWidthsRef.current[col] ?? DEFAULT_COL_WIDTH;
+    resizingRef.current = { col, startX: e.clientX, startWidth };
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const diff = ev.clientX - resizingRef.current.startX;
+      const newWidth = Math.max(50, resizingRef.current.startWidth + diff);
+      setColumnWidths((prev) => ({ ...prev, [resizingRef.current!.col]: newWidth }));
+    };
+
+    const onMouseUp = () => {
+      resizingRef.current = null;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, []);
 
   // Get the table name from the activeItem for column option lookups
   const tableName = useMemo(() => {
@@ -38,6 +82,60 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
     const m = activeItem.sql.match(/FROM\s+["']?(\w+)["']?/i);
     return m ? m[1] : "";
   }, [activeItem]);
+
+  // Load persisted column order when table changes
+  useEffect(() => {
+    if (!tableName) return;
+    api.getColumnOrder(tableName).then((order) => {
+      setColumnOrder(order.length > 0 ? order : null);
+    }).catch(() => {});
+  }, [tableName]);
+
+  // Derive column names, hiding PK/id columns from display
+  const pkCol = columns.find((c) => c.pk)?.name ?? "id";
+  const allColNames = useMemo(() => columns.length > 0
+    ? columns.map((c) => c.name)
+    : rows.length > 0
+      ? Object.keys(rows[0])
+      : [], [columns, rows]);
+  const baseColNames = useMemo(() => allColNames.filter((c) => {
+    const colDef = columns.find((cd) => cd.name === c);
+    if (colDef?.pk) return false;
+    if (c.toLowerCase() === "id" || c.toLowerCase() === "rowid") return false;
+    return true;
+  }), [allColNames, columns]);
+
+  // Apply custom column order if set, filtering out stale entries and appending new ones
+  const colNames = useMemo(() => {
+    if (!columnOrder) return baseColNames;
+    const ordered = columnOrder.filter((c) => baseColNames.includes(c));
+    const remaining = baseColNames.filter((c) => !columnOrder.includes(c));
+    return [...ordered, ...remaining];
+  }, [columnOrder, baseColNames]);
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveDragCol(String(event.active.id));
+  }, []);
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveDragCol(null);
+    if (!over || active.id === over.id) return;
+    setColumnOrder((prev) => {
+      const order = prev ?? [...colNames];
+      const oldIndex = order.indexOf(String(active.id));
+      const newIndex = order.indexOf(String(over.id));
+      if (oldIndex === -1 || newIndex === -1) return order;
+      const newOrder = arrayMove(order, oldIndex, newIndex);
+      if (tableName) {
+        const rollback = prev;
+        api.setColumnOrder(tableName, newOrder).catch(() => {
+          setColumnOrder(rollback);
+        });
+      }
+      return newOrder;
+    });
+  }, [colNames, tableName]);
 
   const startEdit = (rowIdx: number, col: string, value: unknown) => {
     setEditingCell({ rowIdx, col });
@@ -116,6 +214,12 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
     return String(val);
   };
 
+  // Compute a CSS grid-template-columns value so every row shares the same grid
+  const gridTemplate = [
+    ...(onDeleteRow ? ["32px"] : []),
+    ...colNames.map((col) => `${columnWidths[col] ?? DEFAULT_COL_WIDTH}px`),
+  ].join(" ");
+
   if (colNames.length === 0 && rows.length === 0) {
     return (
       <div className="view-table">
@@ -128,153 +232,169 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
 
   return (
     <div className="view-table">
-      <div className="table-header">
-        {onDeleteRow && <div className="col col-actions" />}
-        {colNames.map((col) => (
-          <div key={col} className="col col-dynamic">
-            <span>{col}</span>
+      <div className="table-scroll">
+        {/* ── Header with dnd-kit reorder ── */}
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} modifiers={[restrictToHorizontal]}>
+          <div className="table-header-row" style={{ gridTemplateColumns: gridTemplate }}>
+            {onDeleteRow && <div className="th th-actions" />}
+            <SortableContext items={colNames} strategy={horizontalListSortingStrategy}>
+              {colNames.map((col) => (
+                <SortableHeaderCell
+                  key={col}
+                  col={col}
+                  isActive={activeDragCol === col}
+                  onResizeStart={handleResizeStart}
+                />
+              ))}
+            </SortableContext>
           </div>
-        ))}
-      </div>
+        </DndContext>
 
-      <div className="table-body">
-        {rows.map((row, rowIdx) => (
-          <div key={String(row[pkCol] ?? rowIdx)} className="table-row">
-            {onDeleteRow && (
-              <div className="col col-actions">
-                <button
-                  className="row-delete-btn"
-                  onClick={() => onDeleteRow(pkCol, row[pkCol])}
-                  title="Delete row"
+        <div className="table-grid" style={{ gridTemplateColumns: gridTemplate }}>
+          {/* ── Data rows ── */}
+          {rows.map((row, rowIdx) => (
+            <div
+              key={String(row[pkCol] ?? rowIdx)}
+              className="table-row"
+              style={{ display: "contents" }}
+              onMouseEnter={() => setHoveredRow(rowIdx)}
+              onMouseLeave={() => setHoveredRow((prev) => prev === rowIdx ? null : prev)}
+            >
+              {onDeleteRow && (
+                <div className="td td-actions">
+                  <button
+                    className={`row-delete-btn${hoveredRow === rowIdx ? " row-delete-visible" : ""}`}
+                    onClick={() => onDeleteRow(pkCol, row[pkCol])}
+                    title="Delete row"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+              {colNames.map((col) => (
+                <div
+                  key={col}
+                  className={`td${isCheckboxCol(col) ? " td-checkbox" : ""}`}
+                  onDoubleClick={() => !isCheckboxCol(col) && !isStatusCol(col) && onUpdateRow && startEdit(rowIdx, col, row[col])}
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              </div>
-            )}
-            {colNames.map((col) => (
-              <div
-                key={col}
-                className={`col col-dynamic${isCheckboxCol(col) ? " col-checkbox" : ""}`}
-                onDoubleClick={() => !isCheckboxCol(col) && !isStatusCol(col) && onUpdateRow && startEdit(rowIdx, col, row[col])}
-              >
-                {isCheckboxCol(col) ? (
-                  <label className="checkbox-cell" onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={!!row[col]}
-                      onChange={() => toggleCheckbox(rowIdx, col)}
-                      disabled={!onUpdateRow}
-                    />
-                    <span className="checkbox-mark" />
-                  </label>
-                ) : isStatusCol(col) ? (
-                  <div className="status-cell" onClick={(e) => {
-                    e.stopPropagation();
-                    if (!onUpdateRow) return;
-                    setStatusDropdown(
-                      statusDropdown?.rowIdx === rowIdx && statusDropdown?.col === col
-                        ? null
-                        : { rowIdx, col }
-                    );
-                  }}>
-                    {row[col] != null ? (
-                      <span className="badge">
-                        <span className="badge-dot" style={{ backgroundColor: getStatusColor(col, row[col]) }} />
-                        {formatValue(row[col])}
-                      </span>
-                    ) : (
-                      <span className="cell-text status-empty">—</span>
-                    )}
-                    {statusDropdown?.rowIdx === rowIdx && statusDropdown?.col === col && (
-                      <StatusDropdown
-                        options={getStatusOptions(col)}
-                        currentValue={row[col] == null ? "" : String(row[col])}
-                        onSelect={(val) => selectStatus(rowIdx, col, val)}
-                        onClose={() => setStatusDropdown(null)}
+                  {isCheckboxCol(col) ? (
+                    <label className="checkbox-cell" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={!!row[col]}
+                        onChange={() => toggleCheckbox(rowIdx, col)}
+                        disabled={!onUpdateRow}
                       />
-                    )}
-                  </div>
-                ) : editingCell?.rowIdx === rowIdx && editingCell.col === col ? (
-                  <input
-                    className="cell-edit-input"
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    onBlur={commitEdit}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") commitEdit();
-                      if (e.key === "Escape") setEditingCell(null);
-                    }}
-                    autoFocus
-                  />
-                ) : (
-                  <span className="cell-text">{formatValue(row[col])}</span>
-                )}
-              </div>
-            ))}
-          </div>
-        ))}
-
-        {/* New row input */}
-        {onInsertRow && showNewRow && (
-          <div className="table-row new-row-input">
-            <div className="col col-actions" />
-            {colNames.map((col) => {
-              const colDef = columns.find((c) => c.name === col);
-              // Skip auto-increment PK columns
-              if (colDef?.pk && colDef.type === "INTEGER") return (
-                <div key={col} className="col col-dynamic">
-                  <span className="cell-text auto-text">auto</span>
-                </div>
-              );
-              if (isCheckboxCol(col)) return (
-                <div key={col} className="col col-dynamic col-checkbox">
-                  <label className="checkbox-cell">
+                      <span className="checkbox-mark" />
+                    </label>
+                  ) : isStatusCol(col) ? (
+                    <div className="status-cell" onClick={(e) => {
+                      e.stopPropagation();
+                      if (!onUpdateRow) return;
+                      setStatusDropdown(
+                        statusDropdown?.rowIdx === rowIdx && statusDropdown?.col === col
+                          ? null
+                          : { rowIdx, col }
+                      );
+                    }}>
+                      {row[col] != null ? (
+                        <span className="badge">
+                          <span className="badge-dot" style={{ backgroundColor: getStatusColor(col, row[col]) }} />
+                          {formatValue(row[col])}
+                        </span>
+                      ) : (
+                        <span className="cell-text status-empty">—</span>
+                      )}
+                      {statusDropdown?.rowIdx === rowIdx && statusDropdown?.col === col && (
+                        <StatusDropdown
+                          options={getStatusOptions(col)}
+                          currentValue={row[col] == null ? "" : String(row[col])}
+                          onSelect={(val) => selectStatus(rowIdx, col, val)}
+                          onClose={() => setStatusDropdown(null)}
+                        />
+                      )}
+                    </div>
+                  ) : editingCell?.rowIdx === rowIdx && editingCell.col === col ? (
                     <input
-                      type="checkbox"
-                      checked={!!newRowValues[col]}
-                      onChange={() => setNewRowValues((prev) => ({ ...prev, [col]: prev[col] ? 0 : 1 }))}
+                      className="cell-edit-input"
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onBlur={commitEdit}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitEdit();
+                        if (e.key === "Escape") setEditingCell(null);
+                      }}
+                      autoFocus
                     />
-                    <span className="checkbox-mark" />
-                  </label>
+                  ) : (
+                    <span className="cell-text">{formatValue(row[col])}</span>
+                  )}
                 </div>
-              );
-              if (isStatusCol(col)) {
-                const options = getStatusOptions(col);
-                return (
-                  <div key={col} className="col col-dynamic">
-                    <select
-                      className="status-select"
-                      value={String(newRowValues[col] ?? "")}
-                      onChange={(e) => setNewRowValues((prev) => ({ ...prev, [col]: e.target.value }))}
-                    >
-                      <option value="">—</option>
-                      {options.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.value}</option>
-                      ))}
-                    </select>
+              ))}
+            </div>
+          ))}
+
+          {/* ── New row input ── */}
+          {onInsertRow && showNewRow && (
+            <div className="table-row new-row-input" style={{ display: "contents" }}>
+              {onDeleteRow && <div className="td td-actions" />}
+              {colNames.map((col) => {
+                const colDef = columns.find((c) => c.name === col);
+                if (colDef?.pk && colDef.type === "INTEGER") return (
+                  <div key={col} className="td">
+                    <span className="cell-text auto-text">auto</span>
                   </div>
                 );
-              }
-              return (
-                <div key={col} className="col col-dynamic">
-                  <input
-                    className="cell-edit-input"
-                    placeholder={col}
-                    value={String(newRowValues[col] ?? "")}
-                    onChange={(e) => setNewRowValues((prev) => ({ ...prev, [col]: e.target.value }))}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleInsert();
-                      if (e.key === "Escape") setShowNewRow(false);
-                    }}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        )}
+                if (isCheckboxCol(col)) return (
+                  <div key={col} className="td td-checkbox">
+                    <label className="checkbox-cell">
+                      <input
+                        type="checkbox"
+                        checked={!!newRowValues[col]}
+                        onChange={() => setNewRowValues((prev) => ({ ...prev, [col]: prev[col] ? 0 : 1 }))}
+                      />
+                      <span className="checkbox-mark" />
+                    </label>
+                  </div>
+                );
+                if (isStatusCol(col)) {
+                  const options = getStatusOptions(col);
+                  return (
+                    <div key={col} className="td">
+                      <select
+                        className="status-select"
+                        value={String(newRowValues[col] ?? "")}
+                        onChange={(e) => setNewRowValues((prev) => ({ ...prev, [col]: e.target.value }))}
+                      >
+                        <option value="">—</option>
+                        {options.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.value}</option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={col} className="td">
+                    <input
+                      className="cell-edit-input"
+                      placeholder={col}
+                      value={String(newRowValues[col] ?? "")}
+                      onChange={(e) => setNewRowValues((prev) => ({ ...prev, [col]: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleInsert();
+                        if (e.key === "Escape") setShowNewRow(false);
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         {onInsertRow && (
           <div className="new-row" onClick={() => setShowNewRow(!showNewRow)}>
@@ -293,6 +413,33 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
         <span className="footer-label">COUNT</span>
         <span className="footer-value">{rows.length}</span>
       </div>
+    </div>
+  );
+}
+
+// ── Sortable Header Cell ──────────────────────────────────────────────────
+
+function SortableHeaderCell({ col, isActive, onResizeStart }: {
+  col: string;
+  isActive: boolean;
+  onResizeStart: (col: string, e: React.MouseEvent) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: col });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    background: isActive ? 'rgba(31, 31, 31, 0.7)' : undefined,
+    zIndex: isActive ? 20 : undefined,
+  };
+
+  return (
+    <div ref={setNodeRef} className="th" style={style} {...attributes} {...listeners}>
+      <span>{col}</span>
+      <div
+        className="col-resize-handle"
+        onMouseDown={(e) => { e.stopPropagation(); onResizeStart(col, e); }}
+        onPointerDown={(e) => e.stopPropagation()}
+      />
     </div>
   );
 }
