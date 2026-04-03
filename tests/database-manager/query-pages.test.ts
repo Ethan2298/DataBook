@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createTestManager } from "../helpers/setup.js";
 import { DatabaseManager } from "../../src/database-manager.js";
 
@@ -39,6 +39,13 @@ describe("createQueryPage", () => {
       "table"
     );
     expect(page.database).toBe("testdb");
+  });
+
+  it("throws on duplicate name within same database", () => {
+    manager.createQueryPage("Dupe", "SELECT 1", "table");
+    expect(() =>
+      manager.createQueryPage("Dupe", "SELECT 2", "kanban")
+    ).toThrow();
   });
 
   it("throws when no database selected", () => {
@@ -134,10 +141,13 @@ describe("updateQueryPage", () => {
 
   it("updates updated_at timestamp", () => {
     const original = manager.listQueryPages()[0];
-    // Small delay to ensure timestamp difference
+    // Advance fake clock to guarantee a different timestamp
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.now() + 5000));
     const updated = manager.updateQueryPage("Test Page", {
       name: "Updated",
     });
+    vi.useRealTimers();
     expect(updated.updated_at).not.toBe(original.updated_at);
   });
 
@@ -145,6 +155,15 @@ describe("updateQueryPage", () => {
     expect(() =>
       manager.updateQueryPage("Nonexistent", { name: "X" })
     ).toThrow('Query page "Nonexistent" not found');
+  });
+
+  it("renamed page is findable by new name", () => {
+    manager.updateQueryPage("Test Page", { name: "Renamed" });
+    const updated = manager.updateQueryPage("Renamed", {
+      query: "SELECT 42",
+    });
+    expect(updated.name).toBe("Renamed");
+    expect(updated.query).toBe("SELECT 42");
   });
 });
 

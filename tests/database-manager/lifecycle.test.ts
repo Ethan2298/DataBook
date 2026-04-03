@@ -40,7 +40,8 @@ describe("dbPath validation", () => {
   });
 
   it("accepts alphanumeric with dashes, underscores, dots, spaces", () => {
-    expect(() => manager.createDatabase("my-db_v1.0 test")).not.toThrow();
+    manager.createDatabase("my-db_v1.0 test");
+    expect(manager.listDatabases()).toContain("my-db_v1.0 test");
   });
 });
 
@@ -76,8 +77,10 @@ describe("listDatabases", () => {
     expect(dbs).toHaveLength(2);
   });
 
-  it("excludes .meta.db from results", () => {
+  it("excludes .meta.db from results even with other databases present", () => {
+    manager.createDatabase("real");
     const dbs = manager.listDatabases();
+    expect(dbs).toContain("real");
     expect(dbs).not.toContain(".meta");
     expect(dbs).not.toContain(".meta.db");
   });
@@ -103,6 +106,13 @@ describe("selectDatabase", () => {
     expect(() => manager.selectDatabase("bad!name")).toThrow(
       "Invalid database name"
     );
+  });
+
+  it("auto-creates file for non-existent database name", () => {
+    // better-sqlite3 creates the file if it doesn't exist
+    manager.selectDatabase("brand-new");
+    expect(manager.getCurrentDbName()).toBe("brand-new");
+    expect(manager.listDatabases()).toContain("brand-new");
   });
 
   it("enables WAL and foreign keys", () => {
@@ -167,5 +177,6 @@ describe("close", () => {
     manager.createDatabase("testdb");
     manager.selectDatabase("testdb");
     expect(() => manager.close()).not.toThrow();
+    // afterEach cleanup calls close() again — safe due to try/catch in helper
   });
 });

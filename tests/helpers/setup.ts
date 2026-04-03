@@ -14,7 +14,7 @@ export function createTestManager(): {
     manager,
     tmpDir,
     cleanup: () => {
-      manager.close();
+      try { manager.close(); } catch { /* already closed */ }
       fs.rmSync(tmpDir, { recursive: true, force: true });
     },
   };

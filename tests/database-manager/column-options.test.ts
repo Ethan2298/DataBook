@@ -117,6 +117,19 @@ describe("removeColumnOption", () => {
       manager.removeColumnOption("tasks", "status", "Nonexistent")
     ).toThrow('Option "Nonexistent" not found');
   });
+
+  it("new option after removal gets next sort_order based on MAX", () => {
+    manager.addColumnOption("tasks", "status", "A", "#111"); // sort_order 0
+    manager.addColumnOption("tasks", "status", "B", "#222"); // sort_order 1
+    manager.addColumnOption("tasks", "status", "C", "#333"); // sort_order 2
+    manager.removeColumnOption("tasks", "status", "B");      // remove middle
+    manager.addColumnOption("tasks", "status", "D", "#444"); // should get sort_order 3
+
+    const options = manager.getColumnOptions("tasks", "status");
+    const d = options.find((o) => o.value === "D");
+    expect(d).toBeDefined();
+    expect(d!.sort_order).toBe(3);
+  });
 });
 
 describe("cross-database isolation", () => {

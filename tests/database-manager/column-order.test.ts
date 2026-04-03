@@ -61,6 +61,21 @@ describe("setColumnOrder", () => {
       "id",
     ]);
   });
+
+  it("setColumnOrder with empty array clears the order", () => {
+    manager.setColumnOrder("tasks", ["title", "status"]);
+    manager.setColumnOrder("tasks", []);
+    expect(manager.getColumnOrder("tasks")).toEqual([]);
+  });
+
+  it("accepts column names that do not exist in the table schema", () => {
+    // setColumnOrder does not validate against actual table columns
+    manager.setColumnOrder("tasks", ["nonexistent", "also_fake"]);
+    expect(manager.getColumnOrder("tasks")).toEqual([
+      "nonexistent",
+      "also_fake",
+    ]);
+  });
 });
 
 describe("cross-database isolation", () => {

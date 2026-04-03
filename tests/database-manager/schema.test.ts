@@ -86,6 +86,12 @@ describe("createTable", () => {
     const status = info.find((c) => c["name"] === "status");
     expect(status!["notnull"]).toBe(1);
     expect(status!["dflt_value"]).toBe("'active'");
+
+    // Verify UNIQUE is enforced by attempting duplicate insert
+    manager.insertRows("items", [{ id: 1, status: "active", code: "ABC" }]);
+    expect(() =>
+      manager.insertRows("items", [{ id: 2, status: "active", code: "ABC" }])
+    ).toThrow(); // UNIQUE constraint violation
   });
 
   it("uses IF NOT EXISTS (no error on duplicate call)", () => {
@@ -169,6 +175,30 @@ describe("alterTable", () => {
         { type: "unknown_op" } as any,
       ])
     ).toThrow("Unknown alter operation");
+  });
+
+  it("throws when adding duplicate column", () => {
+    expect(() =>
+      manager.alterTable("items", [
+        { type: "add_column", column: "name", columnType: "TEXT" },
+      ])
+    ).toThrow(); // column "name" already exists
+  });
+
+  it("throws when dropping non-existent column", () => {
+    expect(() =>
+      manager.alterTable("items", [
+        { type: "drop_column", column: "nonexistent" },
+      ])
+    ).toThrow();
+  });
+
+  it("throws when renaming non-existent column", () => {
+    expect(() =>
+      manager.alterTable("items", [
+        { type: "rename_column", column: "nonexistent", newName: "other" },
+      ])
+    ).toThrow();
   });
 });
 

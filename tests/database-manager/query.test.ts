@@ -50,6 +50,13 @@ describe("query", () => {
     expect(result).toHaveLength(1);
     expect(result[0].changes).toBe(1);
     expect(result[0].lastInsertRowid).toBeDefined();
+
+    // Verify the row was actually inserted
+    const rows = manager.query(
+      "SELECT name FROM items WHERE name = ?",
+      ["Thingamajig"]
+    ) as any[];
+    expect(rows).toHaveLength(1);
   });
 
   it("UPDATE returns { changes }", () => {

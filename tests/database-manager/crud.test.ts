@@ -54,6 +54,12 @@ describe("insertRows", () => {
     expect(rows[0].age).toBe(30);
   });
 
+  it("throws when inserting into non-existent table", () => {
+    expect(() =>
+      manager.insertRows("nonexistent", [{ name: "Alice" }])
+    ).toThrow();
+  });
+
   it("handles various data types (text, integer, real, null)", () => {
     manager.createTable("mixed", [
       { name: "id", type: "INTEGER", primaryKey: true },
