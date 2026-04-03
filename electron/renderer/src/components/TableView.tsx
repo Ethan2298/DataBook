@@ -12,6 +12,7 @@ import {
 import { SortableContext, useSortable, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Row, ColumnInfo, ActiveItem, ColumnOptionsMap } from "../data";
+import DetailPanel from "./DetailPanel";
 import api from "../api";
 
 const restrictToHorizontal: Modifier = ({ transform }) => ({
@@ -41,6 +42,7 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
   const [columnOrder, setColumnOrder] = useState<string[] | null>(null);
   const [activeDragCol, setActiveDragCol] = useState<string | null>(null);
   const [hoveredRow, setHoveredRow] = useState<number | null>(null);
+  const [detailRow, setDetailRow] = useState<Row | null>(null);
   const resizingRef = useRef<{ col: string; startX: number; startWidth: number } | null>(null);
   const columnWidthsRef = useRef(columnWidths);
   columnWidthsRef.current = columnWidths;
@@ -263,6 +265,18 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
               {onDeleteRow && (
                 <div className="td td-actions">
                   <button
+                    className={`row-expand-btn${hoveredRow === rowIdx ? " row-expand-visible" : ""}`}
+                    onClick={() => setDetailRow(row)}
+                    title="View details"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="15 3 21 3 21 9" />
+                      <polyline points="9 21 3 21 3 15" />
+                      <line x1="21" y1="3" x2="14" y2="10" />
+                      <line x1="3" y1="21" x2="10" y2="14" />
+                    </svg>
+                  </button>
+                  <button
                     className={`row-delete-btn${hoveredRow === rowIdx ? " row-delete-visible" : ""}`}
                     onClick={() => onDeleteRow(pkCol, row[pkCol])}
                     title="Delete row"
@@ -413,6 +427,15 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
         <span className="footer-label">COUNT</span>
         <span className="footer-value">{rows.length}</span>
       </div>
+
+      <DetailPanel
+        row={detailRow}
+        columns={columns}
+        columnOptions={columnOptions}
+        tableName={tableName}
+        onClose={() => setDetailRow(null)}
+        onUpdateRow={onUpdateRow}
+      />
     </div>
   );
 }
