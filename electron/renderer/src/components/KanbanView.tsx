@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import type { Row, ColumnInfo, ColumnOptionsMap } from "../data";
 import DetailPanel from "./DetailPanel";
 
@@ -299,61 +299,88 @@ export default function KanbanView({
     return colorMap.get(group) ?? COLORS[index % COLORS.length];
   };
 
-  // Build row-id to row index map (using index as stable id)
-  const rowId = (idx: number) => `row-${idx}`;
+  // Use primary key for stable drag IDs, fallback to index if no pkCol
+  const rowId = useCallback((row: Row, idx: number) => {
+    if (pkCol && row[pkCol] != null) return `row-${row[pkCol]}`;
+    return `row-idx-${idx}`;
+  }, [pkCol]);
+
+  // Find a row by its drag ID
+  const findRowByDragId = useCallback((id: string, rows: Row[]): Row | undefined => {
+    if (id.startsWith("row-idx-")) {
+      const idx = Number(id.replace("row-idx-", ""));
+      return rows[idx];
+    }
+    const pkVal = id.replace("row-", "");
+    if (pkCol) {
+      return rows.find((r) => String(r[pkCol]) === pkVal);
+    }
+    return undefined;
+  }, [pkCol]);
 
   // Track original group of a dragged card so we can persist the change on dragEnd
   const dragOrigGroup = useRef<string | null>(null);
+  // Ref to always read latest localRows in drag handlers (avoids stale closure)
+  const localRowsRef = useRef(localRows);
+  useEffect(() => { localRowsRef.current = localRows; }, [localRows]);
 
-  const handleDragStart = (event: DragStartEvent) => {
-    const idx = Number(String(event.active.id).replace("row-", ""));
-    if (localRows[idx]) {
-      setActiveRow(localRows[idx]);
-      dragOrigGroup.current = String(localRows[idx][groupByCol] ?? "");
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const row = findRowByDragId(String(event.active.id), localRowsRef.current);
+    if (row) {
+      setActiveRow(row);
+      dragOrigGroup.current = String(row[groupByCol] ?? "");
     }
-  };
+  }, [findRowByDragId, groupByCol]);
 
-  const handleDragOver = (event: DragOverEvent) => {
+  const handleDragOver = useCallback((event: DragOverEvent) => {
     const { active, over } = event;
     if (!over) return;
 
-    const activeIdx = Number(String(active.id).replace("row-", ""));
+    const activeId = String(active.id);
     const overId = String(over.id);
 
     if (overId.startsWith("column-")) {
       // Dragged over a column — move to that group
       const targetGroup = overId.replace("column-", "");
       setLocalRows((prev) => {
-        if (String(prev[activeIdx]?.[groupByCol] ?? "") === targetGroup) return prev;
+        const row = findRowByDragId(activeId, prev);
+        if (!row || String(row[groupByCol] ?? "") === targetGroup) return prev;
+        const idx = prev.indexOf(row);
+        if (idx === -1) return prev;
         const updated = [...prev];
-        updated[activeIdx] = { ...updated[activeIdx], [groupByCol]: targetGroup };
+        updated[idx] = { ...updated[idx], [groupByCol]: targetGroup };
         return updated;
       });
     } else {
       // Dragged over another card — reorder
-      const overIdx = Number(overId.replace("row-", ""));
-      if (activeIdx === overIdx) return;
+      if (activeId === overId) return;
       setLocalRows((prev) => {
+        const activeRow = findRowByDragId(activeId, prev);
+        const overRow = findRowByDragId(overId, prev);
+        if (!activeRow || !overRow) return prev;
+        const activeIdx = prev.indexOf(activeRow);
+        const overIdx = prev.indexOf(overRow);
+        if (activeIdx === -1 || overIdx === -1 || activeIdx === overIdx) return prev;
         const updated = [...prev];
         const [moved] = updated.splice(activeIdx, 1);
         // Update group if crossing columns
-        const targetGroup = String(prev[overIdx]?.[groupByCol] ?? "");
+        const targetGroup = String(overRow[groupByCol] ?? "");
         if (String(moved[groupByCol] ?? "") !== targetGroup) {
           moved[groupByCol] = targetGroup;
         }
-        // Insert at the over position (adjusted for removal)
         const insertIdx = overIdx > activeIdx ? overIdx - 1 : overIdx;
         updated.splice(insertIdx, 0, moved);
         return updated;
       });
     }
-  };
+  }, [findRowByDragId, groupByCol, pkCol]);
 
-  const handleDragEnd = (_event: DragEndEvent) => {
-    // Persist the change to the database if the card moved to a different column
+  const handleDragEnd = useCallback((_event: DragEndEvent) => {
+    // Read latest localRows from ref to avoid stale closure
+    const currentRows = localRowsRef.current;
     if (activeRow && pkCol && onUpdateRow) {
-      const activeIdx = localRows.findIndex((r) => r[pkCol] === activeRow[pkCol]);
-      const currentGroup = activeIdx >= 0 ? String(localRows[activeIdx][groupByCol] ?? "") : null;
+      const row = currentRows.find((r) => r[pkCol] === activeRow[pkCol]);
+      const currentGroup = row ? String(row[groupByCol] ?? "") : null;
       const origGroup = dragOrigGroup.current;
       if (currentGroup !== null && origGroup !== null && currentGroup !== origGroup) {
         onUpdateRow(pkCol, activeRow[pkCol], { [groupByCol]: currentGroup });
@@ -361,22 +388,22 @@ export default function KanbanView({
     }
     setActiveRow(null);
     dragOrigGroup.current = null;
-  };
+  }, [activeRow, pkCol, onUpdateRow, groupByCol]);
 
-  const toggleCollapse = (group: string) => {
+  const toggleCollapse = useCallback((group: string) => {
     setCollapsedCols((prev) => {
       const next = new Set(prev);
       if (next.has(group)) next.delete(group);
       else next.add(group);
       return next;
     });
-  };
+  }, []);
 
-  const handleAddCard = (group: string, title: string) => {
+  const handleAddCard = useCallback((group: string, title: string) => {
     if (onInsertRow) {
       onInsertRow({ [groupByCol]: group, [titleCol]: title });
     }
-  };
+  }, [onInsertRow, groupByCol, titleCol]);
 
   return (
     <div className="view-kanban">
@@ -393,7 +420,7 @@ export default function KanbanView({
             const groupRows = localRows
               .map((r, i) => ({ row: r, idx: i }))
               .filter(({ row }) => String(row[groupByCol] ?? "") === group);
-            const ids = groupRows.map(({ idx }) => rowId(idx));
+            const ids = groupRows.map(({ row, idx }) => rowId(row, idx));
 
             return (
               <DroppableColumn
@@ -412,8 +439,8 @@ export default function KanbanView({
               >
                 {groupRows.map(({ row, idx }) => (
                   <SortableCard
-                    key={rowId(idx)}
-                    id={rowId(idx)}
+                    key={rowId(row, idx)}
+                    id={rowId(row, idx)}
                     row={row}
                     titleCol={titleCol}
                     columns={columns}

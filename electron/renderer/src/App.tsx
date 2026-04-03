@@ -445,6 +445,26 @@ export default function App() {
     }
   }, [colNames, defaultViewConfig]);
 
+  // Auto-save viewConfig when it changes on a query page
+  const viewConfigRef = useRef(viewConfig);
+  useEffect(() => {
+    viewConfigRef.current = viewConfig;
+  }, [viewConfig]);
+
+  const prevSavedConfigRef = useRef<string>("");
+  useEffect(() => {
+    if (!activeItem || activeItem.kind !== "query_page") return;
+    const configJson = JSON.stringify(viewConfig);
+    // Skip if nothing changed or it's the initial load
+    if (configJson === prevSavedConfigRef.current) return;
+    prevSavedConfigRef.current = configJson;
+    // Debounce: save after a short delay
+    const timer = setTimeout(() => {
+      api.updateQueryPage(activeItem.name, { view_config: configJson }).catch(() => {});
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [viewConfig, activeItem]);
+
   // Resolved config: merge user overrides with defaults
   const resolvedConfig = useMemo((): Required<ViewConfig> => ({
     groupByCol: viewConfig.groupByCol || defaultViewConfig.groupByCol || "",
@@ -457,11 +477,14 @@ export default function App() {
       <Sidebar
         databases={databases}
         currentDb={currentDb}
+        tables={tables}
         queryPages={queryPages}
         activeItem={activeItem}
         onSelectDb={selectDb}
         onCreateDb={createDb}
         onDeleteDb={deleteDb}
+        onSelectTable={selectTable}
+        onDropTable={dropTable}
         onSelectQueryPage={selectQueryPage}
         onDeleteQueryPage={deleteQueryPage}
       />

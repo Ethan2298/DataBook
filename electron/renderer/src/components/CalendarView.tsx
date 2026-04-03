@@ -95,47 +95,6 @@ function getEventColor(
   return opt ? opt.color : DEFAULT_EVENT_COLOR;
 }
 
-/* ── Popover for event details ── */
-function EventPopover({
-  row,
-  onClose,
-  anchorRect,
-}: {
-  row: Row;
-  onClose: () => void;
-  anchorRect: DOMRect;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [onClose]);
-
-  const top = anchorRect.bottom + 4;
-  const left = anchorRect.left;
-
-  return (
-    <div
-      ref={ref}
-      className="calendar-popover"
-      style={{ position: "fixed", top, left, zIndex: 1000 }}
-    >
-      {Object.entries(row).map(([key, value]) => (
-        <div key={key} className="calendar-popover-row">
-          <span className="calendar-popover-label">{key}</span>
-          <span className="calendar-popover-value">{value == null ? "" : String(value)}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 /* ── Inline add input ── */
 function InlineAddInput({
   onSubmit,
@@ -187,7 +146,6 @@ export default function CalendarView({
   const [month, setMonth] = useState(() => new Date().getMonth());
   const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set());
   const [addingCell, setAddingCell] = useState<string | null>(null);
-  const [popover, setPopover] = useState<{ row: Row; rect: DOMRect } | null>(null);
   const [dragRow, setDragRow] = useState<Row | null>(null);
   const [selectedRow, setSelectedRow] = useState<Row | null>(null);
 
@@ -417,14 +375,6 @@ export default function CalendarView({
           </div>
         ))}
       </div>
-
-      {popover && (
-        <EventPopover
-          row={popover.row}
-          anchorRect={popover.rect}
-          onClose={() => setPopover(null)}
-        />
-      )}
 
       <DetailPanel
         row={selectedRow}
