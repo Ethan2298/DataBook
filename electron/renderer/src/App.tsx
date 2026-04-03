@@ -528,6 +528,7 @@ export default function App() {
                 pkCol={columns.find((c) => c.pk)?.name ?? "id"}
                 tableName={activeItem.name}
                 columnOptions={columnOptions}
+                columnInfos={columns}
                 onUpdateRow={activeItem.kind === "table" ? (pkCol, pkVal, updates) => updateRow(activeItem.name, pkCol, pkVal, updates) : undefined}
                 onInsertRow={activeItem.kind === "table" ? (row) => insertRow(activeItem.name, row) : undefined}
               />
