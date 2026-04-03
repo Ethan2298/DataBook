@@ -69,6 +69,12 @@ handle('db:removeColumnOption', (m, table, column, value) => m.removeColumnOptio
 handle('db:getColumnOrder', (m, table) => m.getColumnOrder(table));
 handle('db:setColumnOrder', (m, table, columns) => m.setColumnOrder(table, columns));
 
+// ── Column Metadata (Field Types) ──────────────────────────────────────────
+handle('db:setColumnMetadata', (m, table, column, fieldType, config) => m.setColumnMetadata(table, column, fieldType, config));
+handle('db:getColumnMetadata', (m, table, column) => m.getColumnMetadata(table, column));
+handle('db:getAllColumnMetadata', (m, table) => m.getAllColumnMetadata(table));
+handle('db:removeColumnMetadata', (m, table, column) => m.removeColumnMetadata(table, column));
+
 // ── File watcher for external changes (e.g. MCP server) ─────────────────────
 
 let mainWindow = null;

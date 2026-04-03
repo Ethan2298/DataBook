@@ -38,3 +38,14 @@ export interface ColumnOption {
 
 // Map of "table.column" -> ColumnOption[]
 export type ColumnOptionsMap = Record<string, ColumnOption[]>;
+
+export type FieldType = 'text' | 'number' | 'select' | 'multi_select' | 'date' | 'checkbox' | 'url' | 'email';
+
+export interface ColumnMetadata {
+  column: string;
+  field_type: FieldType;
+  config: Record<string, unknown>;
+}
+
+// Map of column_name -> ColumnMetadata
+export type ColumnMetadataMap = Record<string, ColumnMetadata>;
