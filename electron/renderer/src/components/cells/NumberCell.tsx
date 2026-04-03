@@ -44,12 +44,14 @@ export default function NumberCell({ value, metadata, onCommitEdit, disabled }: 
         value={editValue}
         onChange={(e) => setEditValue(e.target.value)}
         onBlur={() => {
-          if (editValue !== String(numVal ?? "")) onCommitEdit(editValue === "" ? null : Number(editValue));
+          const parsed = Number(editValue);
+          if (editValue !== String(numVal ?? "")) onCommitEdit(editValue === "" ? null : isNaN(parsed) ? null : parsed);
           setEditing(false);
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
-            if (editValue !== String(numVal ?? "")) onCommitEdit(editValue === "" ? null : Number(editValue));
+            const parsed = Number(editValue);
+            if (editValue !== String(numVal ?? "")) onCommitEdit(editValue === "" ? null : isNaN(parsed) ? null : parsed);
             setEditing(false);
           }
           if (e.key === "Escape") setEditing(false);

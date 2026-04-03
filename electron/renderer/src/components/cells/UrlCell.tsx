@@ -40,15 +40,21 @@ export default function UrlCell({ value, onCommitEdit, disabled }: CellProps) {
     return <span className="cell-text" onDoubleClick={() => { if (!disabled) { setEditValue(""); setEditing(true); } }} />;
   }
 
+  const isSafeUrl = /^https?:\/\//i.test(strVal);
+
   return (
     <span className="cell-url" onDoubleClick={() => {
       if (disabled) return;
       setEditValue(strVal);
       setEditing(true);
     }}>
-      <a href={strVal} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
-        {strVal.replace(/^https?:\/\//, "").replace(/\/$/, "")}
-      </a>
+      {isSafeUrl ? (
+        <a href={strVal} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+          {strVal.replace(/^https?:\/\//, "").replace(/\/$/, "")}
+        </a>
+      ) : (
+        <span className="cell-text">{strVal}</span>
+      )}
     </span>
   );
 }

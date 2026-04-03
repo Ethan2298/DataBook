@@ -198,7 +198,7 @@ export class DatabaseManager {
 
   describeTable(table: string): Record<string, unknown>[] {
     const db = this.getDb();
-    return db.prepare(`PRAGMA table_info(${JSON.stringify(table)})`).all() as Record<string, unknown>[];
+    return db.prepare(`PRAGMA table_info("${table.replace(/"/g, '""')}")`).all() as Record<string, unknown>[];
   }
 
   createTable(table: string, columns: ColumnDef[]): void {
@@ -237,52 +237,53 @@ export class DatabaseManager {
   alterTable(table: string, operations: AlterOperation[]): void {
     const db = this.getDb();
     const dbName = this.getCurrentDbName();
+    let currentTable = table;
     for (const op of operations) {
       switch (op.type) {
         case "add_column": {
           let def = `"${op.column}" ${op.columnType}`;
           if (op.notNull) def += " NOT NULL";
           if (op.defaultValue !== undefined) def += ` DEFAULT ${op.defaultValue}`;
-          db.exec(`ALTER TABLE "${table}" ADD COLUMN ${def}`);
+          db.exec(`ALTER TABLE "${currentTable}" ADD COLUMN ${def}`);
           // Auto-create metadata if fieldType specified or detectable
           const fieldType = op.fieldType ?? this.inferFieldType(op.columnType);
           if (fieldType) {
-            this.setColumnMetadata(table, op.column, fieldType, op.fieldConfig ?? {});
+            this.setColumnMetadata(currentTable, op.column, fieldType, op.fieldConfig ?? {});
           }
           break;
         }
         case "rename_column":
           db.exec(
-            `ALTER TABLE "${table}" RENAME COLUMN "${op.column}" TO "${op.newName}"`
+            `ALTER TABLE "${currentTable}" RENAME COLUMN "${op.column}" TO "${op.newName}"`
           );
           // Update metadata column name
           this.metaDb
             .prepare(`UPDATE column_metadata SET "column" = ? WHERE database = ? AND "table" = ? AND "column" = ?`)
-            .run(op.newName, dbName, table, op.column);
+            .run(op.newName, dbName, currentTable, op.column);
           // Update column_options too (backward compat)
           this.metaDb
             .prepare(`UPDATE column_options SET "column" = ? WHERE database = ? AND "table" = ? AND "column" = ?`)
-            .run(op.newName, dbName, table, op.column);
+            .run(op.newName, dbName, currentTable, op.column);
           // Update column_order
           this.metaDb
             .prepare(`UPDATE column_order SET column_name = ? WHERE database = ? AND "table" = ? AND column_name = ?`)
-            .run(op.newName, dbName, table, op.column);
+            .run(op.newName, dbName, currentTable, op.column);
           break;
         case "drop_column":
-          db.exec(`ALTER TABLE "${table}" DROP COLUMN "${op.column}"`);
+          db.exec(`ALTER TABLE "${currentTable}" DROP COLUMN "${op.column}"`);
           // Clean up metadata
-          this.removeColumnMetadata(table, op.column);
+          this.removeColumnMetadata(currentTable, op.column);
           // Clean up column_options
           this.metaDb
             .prepare(`DELETE FROM column_options WHERE database = ? AND "table" = ? AND "column" = ?`)
-            .run(dbName, table, op.column);
+            .run(dbName, currentTable, op.column);
           // Clean up column_order
           this.metaDb
             .prepare(`DELETE FROM column_order WHERE database = ? AND "table" = ? AND column_name = ?`)
-            .run(dbName, table, op.column);
+            .run(dbName, currentTable, op.column);
           break;
         case "rename_table": {
-          db.exec(`ALTER TABLE "${table}" RENAME TO "${op.newName}"`);
+          db.exec(`ALTER TABLE "${currentTable}" RENAME TO "${op.newName}"`);
           // Update all metadata references
           const renameTables = [
             `UPDATE column_metadata SET "table" = ? WHERE database = ? AND "table" = ?`,
@@ -290,8 +291,9 @@ export class DatabaseManager {
             `UPDATE column_order SET "table" = ? WHERE database = ? AND "table" = ?`,
           ];
           for (const sql of renameTables) {
-            this.metaDb.prepare(sql).run(op.newName, dbName, table);
+            this.metaDb.prepare(sql).run(op.newName, dbName, currentTable);
           }
+          currentTable = op.newName;
           break;
         }
         default:
@@ -488,6 +490,8 @@ export class DatabaseManager {
          VALUES (?, ?, ?, ?, ?, ?)`
       )
       .run(dbName, table, column, value, color, maxRow.max_sort + 1);
+    // Sync to column_metadata
+    this.syncOptionsToMetadata(dbName, table, column);
   }
 
   removeColumnOption(table: string, column: string, value: string): void {
@@ -500,6 +504,8 @@ export class DatabaseManager {
     if (result.changes === 0) {
       throw new Error(`Option "${value}" not found for ${table}.${column}`);
     }
+    // Sync to column_metadata
+    this.syncOptionsToMetadata(dbName, table, column);
   }
 
   // ── Column order ────────────────────────────────────────────────────────────
@@ -597,6 +603,28 @@ export class DatabaseManager {
     this.metaDb
       .prepare(`DELETE FROM column_metadata WHERE database = ? AND "table" = ? AND "column" = ?`)
       .run(dbName, table, column);
+  }
+
+  private syncOptionsToMetadata(dbName: string, table: string, column: string): void {
+    // Read current options from column_options and write to column_metadata config
+    const options = this.metaDb
+      .prepare(
+        `SELECT value, color, sort_order FROM column_options
+         WHERE database = ? AND "table" = ? AND "column" = ?
+         ORDER BY sort_order, value`
+      )
+      .all(dbName, table, column) as ColumnOption[];
+    const config = JSON.stringify({
+      options: options.map((o) => ({ value: o.value, color: o.color, sort_order: o.sort_order })),
+    });
+    // Upsert: create as 'select' if not exists, otherwise update config only
+    this.metaDb
+      .prepare(
+        `INSERT INTO column_metadata (database, "table", "column", field_type, config)
+         VALUES (?, ?, ?, 'select', ?)
+         ON CONFLICT(database, "table", "column") DO UPDATE SET config = excluded.config`
+      )
+      .run(dbName, table, column, config);
   }
 
   private syncOptionsFromMetadata(dbName: string, table: string, column: string, config: Record<string, unknown>): void {

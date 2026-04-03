@@ -1124,6 +1124,28 @@ body {
   text-align: center;
 }
 
+.multi-select-new-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.multi-select-new-row-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #ECECEA;
+  cursor: pointer;
+}
+
+.status-dropdown-clear {
+  border-bottom: 1px solid #363636;
+  color: #9B9A97;
+  font-size: 12px;
+}
+
 /* ── Field Type Picker ── */
 
 .field-type-btn {

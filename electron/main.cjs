@@ -93,7 +93,6 @@ function startWatching() {
 
   fsWatcher.on('all', (_eventType, filePath) => {
     if (!filePath.endsWith('.db')) return;
-    if (path.basename(filePath).startsWith('.meta')) return;
     // Debounce: collapse rapid changes into a single refresh
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {

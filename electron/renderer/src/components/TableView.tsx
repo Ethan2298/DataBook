@@ -283,8 +283,37 @@ export default function TableView({ rows, columns, activeItem, columnOptions, co
                     </label>
                   </div>
                 );
-                if (meta.field_type === "select") {
+                if (meta.field_type === "select" || meta.field_type === "multi_select") {
                   const options = (meta.config.options as { value: string }[]) ?? [];
+                  if (meta.field_type === "multi_select") {
+                    const selected: string[] = (() => {
+                      const v = newRowValues[col];
+                      if (!v) return [];
+                      try { const p = JSON.parse(String(v)); if (Array.isArray(p)) return p; } catch {}
+                      return [];
+                    })();
+                    return (
+                      <div key={col} className="td">
+                        <div className="multi-select-new-row">
+                          {options.map((opt) => (
+                            <label key={opt.value} className="multi-select-new-row-item">
+                              <input
+                                type="checkbox"
+                                checked={selected.includes(opt.value)}
+                                onChange={() => {
+                                  const next = selected.includes(opt.value)
+                                    ? selected.filter((s) => s !== opt.value)
+                                    : [...selected, opt.value];
+                                  setNewRowValues((prev) => ({ ...prev, [col]: JSON.stringify(next) }));
+                                }}
+                              />
+                              <span>{opt.value}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
                   return (
                     <div key={col} className="td">
                       <select

@@ -36,7 +36,7 @@ export default function FieldTypePicker({ currentType, onSelect, onClose }: Fiel
         <div
           key={opt.value}
           className={`field-type-picker-item${opt.value === currentType ? " active" : ""}`}
-          onClick={() => { onSelect(opt.value); onClose(); }}
+          onClick={() => onSelect(opt.value)}
         >
           <span className="field-type-icon">{opt.icon}</span>
           <span>{opt.label}</span>

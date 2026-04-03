@@ -10,6 +10,8 @@ export interface ColumnDef {
   notNull?: boolean;
   unique?: boolean;
   defaultValue?: string;
+  fieldType?: string;
+  fieldConfig?: Record<string, unknown>;
 }
 
 interface DataBookAPI {

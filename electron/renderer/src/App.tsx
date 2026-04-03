@@ -320,24 +320,35 @@ export default function App() {
     if (activeItem.kind === "table") {
       await selectTable(activeItem.name);
     } else {
-      await runQuery(activeItem.sql);
+      // For query pages: refresh rows, columns, AND metadata
+      try {
+        const result = await api.query(activeItem.sql);
+        setRows(result);
+        const tableMatch = activeItem.sql.match(/FROM\s+["']?(\w+)["']?/i);
+        if (tableMatch) {
+          const [cols, meta, colOpts] = await Promise.all([
+            api.describeTable(tableMatch[1]),
+            api.getAllColumnMetadata(tableMatch[1]),
+            api.getAllColumnOptions(),
+          ]);
+          setColumns(cols);
+          setColumnMetadata(meta);
+          setColumnOptions(colOpts);
+        }
+      } catch (err) {
+        setError(String(err));
+      }
     }
-    // Refresh sidebar + column options + metadata
+    // Refresh sidebar
     if (currentDb) {
-      const tblName = activeItem.kind === "table" ? activeItem.name : activeItem.sql.match(/FROM\s+["']?(\w+)["']?/i)?.[1];
-      const fetches: Promise<unknown>[] = [
+      const [tbls, pages] = await Promise.all([
         api.listTables(),
         api.listQueryPages(),
-        api.getAllColumnOptions(),
-      ];
-      if (tblName) fetches.push(api.getAllColumnMetadata(tblName));
-      const results = await Promise.all(fetches);
-      setTables(results[0] as string[]);
-      setQueryPages(results[1] as QueryPage[]);
-      setColumnOptions(results[2] as ColumnOptionsMap);
-      if (results[3]) setColumnMetadata(results[3] as ColumnMetadataMap);
+      ]);
+      setTables(tbls);
+      setQueryPages(pages);
     }
-  }, [activeItem, currentDb, selectTable, runQuery]);
+  }, [activeItem, currentDb, selectTable]);
 
   // Create table
   const createTable = useCallback(async (tableName: string, columnDefs: { name: string; type: string }[]) => {

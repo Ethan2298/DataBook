@@ -39,6 +39,14 @@ export default function SelectCell({ value, metadata, onCommitEdit, disabled }: 
       )}
       {open && (
         <div className="status-dropdown" onClick={(e) => e.stopPropagation()}>
+          {strVal && (
+            <div
+              className="status-dropdown-item status-dropdown-clear"
+              onClick={() => { onCommitEdit(null); setOpen(false); }}
+            >
+              <span className="cell-text status-empty">Clear</span>
+            </div>
+          )}
           {options.map((opt) => (
             <div
               key={opt.value}
