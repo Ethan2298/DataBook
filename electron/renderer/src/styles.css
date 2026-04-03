@@ -1159,3 +1159,57 @@ body {
   color: #ebebeb;
   word-break: break-word;
 }
+
+/* ── View Config Bar ── */
+
+.view-config-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  background: #1a1a1a;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+/* ── Column Picker ── */
+
+.column-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.column-picker-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #9B9A97;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.column-picker-select {
+  background: #1f1f1f;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  color: #ebebeb;
+  outline: none;
+  cursor: pointer;
+  min-width: 100px;
+}
+
+.column-picker-select:hover {
+  border-color: #444;
+}
+
+.column-picker-select:focus {
+  border-color: #555;
+}
+
+.column-picker-select option {
+  background: #1f1f1f;
+  color: #ebebeb;
+}

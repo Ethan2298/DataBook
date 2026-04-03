@@ -67,7 +67,7 @@ function KanbanCard({ row, titleCol, columns, color }: { row: Row; titleCol: str
   );
 }
 
-function SortableCard({ row, titleCol, columns, color, id }: { row: Row; titleCol: string; columns: string[]; color: typeof COLORS[0]; id: string }) {
+function SortableCard({ row, titleCol, columns, color, id, onClick }: { row: Row; titleCol: string; columns: string[]; color: typeof COLORS[0]; id: string; onClick?: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
   });
@@ -79,8 +79,29 @@ function SortableCard({ row, titleCol, columns, color, id }: { row: Row; titleCo
     cursor: "grab",
   };
 
+  // Track pointer position to distinguish click from drag
+  const pointerStart = useRef<{ x: number; y: number } | null>(null);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    pointerStart.current = { x: e.clientX, y: e.clientY };
+    // Call dnd-kit's listener
+    (listeners as Record<string, (e: React.PointerEvent) => void>)?.onPointerDown?.(e);
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    // Only fire if the pointer didn't move far (not a drag)
+    if (pointerStart.current) {
+      const dx = Math.abs(e.clientX - pointerStart.current.x);
+      const dy = Math.abs(e.clientY - pointerStart.current.y);
+      if (dx < 5 && dy < 5 && onClick) {
+        onClick();
+      }
+    }
+    pointerStart.current = null;
+  };
+
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} onPointerDown={handlePointerDown} onClick={handleClick}>
       <KanbanCard row={row} titleCol={titleCol} columns={columns} color={color} />
     </div>
   );
@@ -397,6 +418,7 @@ export default function KanbanView({
                     titleCol={titleCol}
                     columns={columns}
                     color={color}
+                    onClick={() => setSelectedRow(row)}
                   />
                 ))}
               </DroppableColumn>
@@ -414,6 +436,15 @@ export default function KanbanView({
           )}
         </DragOverlay>
       </DndContext>
+
+      <DetailPanel
+        row={selectedRow}
+        columns={columnInfos ?? []}
+        columnOptions={columnOptions ?? {}}
+        tableName={tableName ?? ""}
+        onClose={() => setSelectedRow(null)}
+        onUpdateRow={onUpdateRow}
+      />
     </div>
   );
 }

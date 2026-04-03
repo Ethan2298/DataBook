@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import type { Row, ColumnInfo, ColumnOptionsMap } from "../data";
+import DetailPanel from "./DetailPanel";
 
 interface CalendarViewProps {
   rows: Row[];
@@ -188,6 +189,7 @@ export default function CalendarView({
   const [addingCell, setAddingCell] = useState<string | null>(null);
   const [popover, setPopover] = useState<{ row: Row; rect: DOMRect } | null>(null);
   const [dragRow, setDragRow] = useState<Row | null>(null);
+  const [selectedRow, setSelectedRow] = useState<Row | null>(null);
 
   const weeks = getCalendarWeeks(year, month);
 
@@ -270,8 +272,7 @@ export default function CalendarView({
 
   const handleEventClick = useCallback((e: React.MouseEvent, row: Row) => {
     e.stopPropagation();
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setPopover({ row, rect });
+    setSelectedRow(row);
   }, []);
 
   // ── Drag and drop ──
@@ -424,6 +425,15 @@ export default function CalendarView({
           onClose={() => setPopover(null)}
         />
       )}
+
+      <DetailPanel
+        row={selectedRow}
+        columns={columns ?? []}
+        columnOptions={columnOptions ?? {}}
+        tableName={tableName ?? ""}
+        onClose={() => setSelectedRow(null)}
+        onUpdateRow={onUpdateRow}
+      />
     </div>
   );
 }
