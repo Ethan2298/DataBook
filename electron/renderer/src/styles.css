@@ -917,6 +917,25 @@ body {
   color: #9B9A97;
 }
 
+.kanban-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  color: #9B9A97;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  width: 100%;
+}
+
+.kanban-add-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #ebebeb;
+}
+
 /* ── Calendar ── */
 
 .view-calendar {
@@ -1052,6 +1071,21 @@ body {
   padding: 4px 6px;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 4px;
+  border-left: 3px solid #555;
+  cursor: pointer;
+}
+
+.calendar-task:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.calendar-task[draggable="true"] {
+  cursor: grab;
+}
+
+.calendar-task[draggable="true"]:active {
+  cursor: grabbing;
+  opacity: 0.6;
 }
 
 .calendar-task-title {
@@ -1061,4 +1095,67 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.calendar-more-btn {
+  background: none;
+  border: none;
+  color: #9B9A97;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+  text-align: left;
+}
+
+.calendar-more-btn:hover {
+  color: #E8E8E3;
+}
+
+.calendar-inline-input {
+  width: 100%;
+  padding: 3px 6px;
+  background: #1f1f1f;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #ebebeb;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  outline: none;
+}
+
+.calendar-inline-input:focus {
+  border-color: #555;
+}
+
+.calendar-popover {
+  background: #1f1f1f;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 200px;
+  max-width: 320px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.calendar-popover-row {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.calendar-popover-label {
+  color: #9B9A97;
+  flex-shrink: 0;
+  min-width: 60px;
+  font-weight: 500;
+}
+
+.calendar-popover-value {
+  color: #ebebeb;
+  word-break: break-word;
 }

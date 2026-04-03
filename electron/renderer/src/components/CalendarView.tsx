@@ -1,10 +1,16 @@
-import { useState, useMemo } from "react";
-import type { Row } from "../data";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import type { Row, ColumnInfo, ColumnOptionsMap } from "../data";
 
 interface CalendarViewProps {
   rows: Row[];
   dateCol: string;
   titleCol: string;
+  columnOptions?: ColumnOptionsMap;
+  statusCol?: string | null;
+  tableName?: string;
+  columns?: ColumnInfo[];
+  onInsertRow?: (row: Row) => void;
+  onUpdateRow?: (pkCol: string, pkVal: unknown, updates: Row) => void;
 }
 
 const MONTH_NAMES = [
@@ -13,6 +19,8 @@ const MONTH_NAMES = [
 ];
 
 const DAY_LABELS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+
+const DEFAULT_EVENT_COLOR = "#555";
 
 function parseDate(val: unknown): Date | null {
   if (val == null) return null;
@@ -37,6 +45,13 @@ function parseDate(val: unknown): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
+function formatDateISO(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 function getCalendarWeeks(year: number, month: number): Date[][] {
   const firstDay = new Date(year, month, 1);
   const startDate = new Date(firstDay);
@@ -57,19 +72,144 @@ function getCalendarWeeks(year: number, month: number): Date[][] {
   return weeks;
 }
 
-export default function CalendarView({ rows, dateCol, titleCol }: CalendarViewProps) {
+function dateKey(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+/** Find primary key column from columns list */
+function findPkCol(columns: ColumnInfo[]): string | null {
+  const pk = columns.find((c) => c.pk === 1);
+  return pk ? pk.name : null;
+}
+
+/** Get event color based on status value */
+function getEventColor(
+  row: Row,
+  statusCol: string | null | undefined,
+  statusOptions: { value: string; color: string }[] | undefined,
+): string {
+  if (!statusCol || !statusOptions || statusOptions.length === 0) return DEFAULT_EVENT_COLOR;
+  const val = String(row[statusCol] ?? "");
+  const opt = statusOptions.find((o) => o.value === val);
+  return opt ? opt.color : DEFAULT_EVENT_COLOR;
+}
+
+/* ── Popover for event details ── */
+function EventPopover({
+  row,
+  onClose,
+  anchorRect,
+}: {
+  row: Row;
+  onClose: () => void;
+  anchorRect: DOMRect;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [onClose]);
+
+  const top = anchorRect.bottom + 4;
+  const left = anchorRect.left;
+
+  return (
+    <div
+      ref={ref}
+      className="calendar-popover"
+      style={{ position: "fixed", top, left, zIndex: 1000 }}
+    >
+      {Object.entries(row).map(([key, value]) => (
+        <div key={key} className="calendar-popover-row">
+          <span className="calendar-popover-label">{key}</span>
+          <span className="calendar-popover-value">{value == null ? "" : String(value)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── Inline add input ── */
+function InlineAddInput({
+  onSubmit,
+  onCancel,
+}: {
+  onSubmit: (value: string) => void;
+  onCancel: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      const val = inputRef.current?.value.trim();
+      if (val) onSubmit(val);
+      else onCancel();
+    } else if (e.key === "Escape") {
+      onCancel();
+    }
+  };
+
+  return (
+    <input
+      ref={inputRef}
+      className="calendar-inline-input"
+      placeholder="New event..."
+      onKeyDown={handleKeyDown}
+      onBlur={onCancel}
+    />
+  );
+}
+
+/* ── Main component ── */
+export default function CalendarView({
+  rows,
+  dateCol,
+  titleCol,
+  columnOptions,
+  statusCol,
+  tableName,
+  columns,
+  onInsertRow,
+  onUpdateRow,
+}: CalendarViewProps) {
   const [year, setYear] = useState(() => new Date().getFullYear());
   const [month, setMonth] = useState(() => new Date().getMonth());
+  const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set());
+  const [addingCell, setAddingCell] = useState<string | null>(null);
+  const [popover, setPopover] = useState<{ row: Row; rect: DOMRect } | null>(null);
+  const [dragRow, setDragRow] = useState<Row | null>(null);
 
   const weeks = getCalendarWeeks(year, month);
 
-  // Build date → rows map
+  // Resolve status column options
+  const statusOptions = useMemo(() => {
+    if (!statusCol || !columnOptions || !tableName) return undefined;
+    const key = `${tableName}.${statusCol}`;
+    return columnOptions[key];
+  }, [statusCol, columnOptions, tableName]);
+
+  const pkCol = useMemo(() => {
+    if (!columns) return null;
+    return findPkCol(columns);
+  }, [columns]);
+
+  // Build date -> rows map
   const dateMap = useMemo(() => {
     const map = new Map<string, Row[]>();
     for (const row of rows) {
       const d = parseDate(row[dateCol]);
       if (!d) continue;
-      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      const key = dateKey(d);
       const arr = map.get(key) ?? [];
       arr.push(row);
       map.set(key, arr);
@@ -92,6 +232,88 @@ export default function CalendarView({ rows, dateCol, titleCol }: CalendarViewPr
     if (month === 11) { setMonth(0); setYear(year + 1); }
     else setMonth(month + 1);
   };
+
+  const toggleExpand = useCallback((key: string) => {
+    setExpandedCells((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const handleCellClick = useCallback(
+    (e: React.MouseEvent, key: string) => {
+      // Only trigger on clicks directly on the cell or cell-header area, not on events
+      if (!onInsertRow) return;
+      const target = e.target as HTMLElement;
+      if (
+        target.closest(".calendar-task") ||
+        target.closest(".calendar-more-btn") ||
+        target.closest(".calendar-inline-input")
+      ) {
+        return;
+      }
+      setAddingCell(key);
+    },
+    [onInsertRow],
+  );
+
+  const handleInlineSubmit = useCallback(
+    (key: string, date: Date, value: string) => {
+      if (!onInsertRow) return;
+      onInsertRow({ [dateCol]: formatDateISO(date), [titleCol]: value });
+      setAddingCell(null);
+    },
+    [onInsertRow, dateCol, titleCol],
+  );
+
+  const handleEventClick = useCallback((e: React.MouseEvent, row: Row) => {
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setPopover({ row, rect });
+  }, []);
+
+  // ── Drag and drop ──
+  const handleDragStart = useCallback((e: React.DragEvent, row: Row) => {
+    setDragRow(row);
+    e.dataTransfer.effectAllowed = "move";
+    // Required for Firefox
+    e.dataTransfer.setData("text/plain", "");
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent, targetDate: Date) => {
+      e.preventDefault();
+      if (!dragRow || !onUpdateRow || !pkCol) {
+        setDragRow(null);
+        return;
+      }
+      const newDateStr = formatDateISO(targetDate);
+      const currentDateStr = (() => {
+        const d = parseDate(dragRow[dateCol]);
+        return d ? formatDateISO(d) : null;
+      })();
+
+      if (newDateStr !== currentDateStr) {
+        onUpdateRow(pkCol, dragRow[pkCol], { [dateCol]: newDateStr });
+      }
+      setDragRow(null);
+    },
+    [dragRow, onUpdateRow, pkCol, dateCol],
+  );
+
+  const handleDragEnd = useCallback(() => {
+    setDragRow(null);
+  }, []);
+
+  const MAX_VISIBLE = 3;
+  const OVERFLOW_VISIBLE = 2;
 
   return (
     <div className="view-calendar">
@@ -123,24 +345,85 @@ export default function CalendarView({ rows, dateCol, titleCol }: CalendarViewPr
           <div key={wi} className="calendar-week">
             {week.map((date, di) => {
               const isOutside = date.getMonth() !== month;
-              const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+              const key = dateKey(date);
               const dayRows = dateMap.get(key) ?? [];
+              const isExpanded = expandedCells.has(key);
+              const hasOverflow = dayRows.length > MAX_VISIBLE;
+              const visibleRows = hasOverflow && !isExpanded
+                ? dayRows.slice(0, OVERFLOW_VISIBLE)
+                : dayRows;
+              const hiddenCount = dayRows.length - OVERFLOW_VISIBLE;
+              const canDrag = !!onUpdateRow && !!pkCol;
+
               return (
-                <div key={di} className={`calendar-cell${isOutside ? " outside" : ""}`}>
+                <div
+                  key={di}
+                  className={`calendar-cell${isOutside ? " outside" : ""}`}
+                  onClick={(e) => handleCellClick(e, key)}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, date)}
+                >
                   <div className="calendar-cell-header">
                     <span className="calendar-date-number">{date.getDate()}</span>
                   </div>
-                  {dayRows.map((row, ri) => (
-                    <div key={ri} className="calendar-task">
-                      <span className="calendar-task-title">{String(row[titleCol] ?? "")}</span>
-                    </div>
-                  ))}
+                  {visibleRows.map((row, ri) => {
+                    const color = getEventColor(row, statusCol, statusOptions);
+                    return (
+                      <div
+                        key={ri}
+                        className="calendar-task"
+                        style={{ borderLeft: `3px solid ${color}` }}
+                        onClick={(e) => handleEventClick(e, row)}
+                        draggable={canDrag}
+                        onDragStart={canDrag ? (e) => handleDragStart(e, row) : undefined}
+                        onDragEnd={canDrag ? handleDragEnd : undefined}
+                      >
+                        <span className="calendar-task-title">{String(row[titleCol] ?? "")}</span>
+                      </div>
+                    );
+                  })}
+                  {hasOverflow && !isExpanded && (
+                    <button
+                      className="calendar-more-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleExpand(key);
+                      }}
+                    >
+                      +{hiddenCount} more
+                    </button>
+                  )}
+                  {hasOverflow && isExpanded && (
+                    <button
+                      className="calendar-more-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleExpand(key);
+                      }}
+                    >
+                      show less
+                    </button>
+                  )}
+                  {addingCell === key && (
+                    <InlineAddInput
+                      onSubmit={(val) => handleInlineSubmit(key, date, val)}
+                      onCancel={() => setAddingCell(null)}
+                    />
+                  )}
                 </div>
               );
             })}
           </div>
         ))}
       </div>
+
+      {popover && (
+        <EventPopover
+          row={popover.row}
+          anchorRect={popover.rect}
+          onClose={() => setPopover(null)}
+        />
+      )}
     </div>
   );
 }

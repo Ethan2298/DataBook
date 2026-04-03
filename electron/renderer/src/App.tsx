@@ -449,15 +449,34 @@ export default function App() {
                 groupByCol={colNames[colNames.length > 1 ? 1 : 0] ?? ""}
                 titleCol={colNames[colNames.length > 1 ? 1 : 0] ?? ""}
                 columns={colNames}
+                pkCol={columns.find((c) => c.pk)?.name ?? "id"}
+                tableName={activeItem.name}
+                columnOptions={columnOptions}
+                onUpdateRow={activeItem.kind === "table" ? (pkCol, pkVal, updates) => updateRow(activeItem.name, pkCol, pkVal, updates) : undefined}
+                onInsertRow={activeItem.kind === "table" ? (row) => insertRow(activeItem.name, row) : undefined}
               />
             )}
-            {activeItem.viewType === "calendar" && (
-              <CalendarView
-                rows={rows}
-                dateCol={colNames.find((c) => /date|time|created|updated/i.test(c)) ?? colNames[colNames.length - 1] ?? ""}
-                titleCol={colNames[colNames.length > 1 ? 1 : 0] ?? ""}
-              />
-            )}
+            {activeItem.viewType === "calendar" && (() => {
+              const calDateCol = colNames.find((c) => /date|time|created|updated/i.test(c)) ?? colNames[colNames.length - 1] ?? "";
+              const calTitleCol = colNames[colNames.length > 1 ? 1 : 0] ?? "";
+              const calTableName = activeItem.kind === "table" ? activeItem.name : undefined;
+              const calStatusCol = calTableName
+                ? colNames.find((c) => columnOptions[`${calTableName}.${c}`]?.length > 0) ?? null
+                : null;
+              return (
+                <CalendarView
+                  rows={rows}
+                  dateCol={calDateCol}
+                  titleCol={calTitleCol}
+                  columnOptions={columnOptions}
+                  statusCol={calStatusCol}
+                  tableName={calTableName}
+                  columns={columns}
+                  onInsertRow={activeItem.kind === "table" ? (row) => insertRow(activeItem.name, row) : undefined}
+                  onUpdateRow={activeItem.kind === "table" ? (pkCol, pkVal, updates) => updateRow(activeItem.name, pkCol, pkVal, updates) : undefined}
+                />
+              );
+            })()}
           </>
         ) : (
           <EmptyState

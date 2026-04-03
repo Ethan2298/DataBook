@@ -32,9 +32,9 @@ interface DataBookAPI {
 
   query(sql: string, params?: unknown[]): Promise<Record<string, unknown>[]>;
 
-  createQueryPage(name: string, query: string, viewType: string): Promise<QueryPage>;
+  createQueryPage(name: string, query: string, viewType: string, viewConfig?: string | null): Promise<QueryPage>;
   listQueryPages(): Promise<QueryPage[]>;
-  updateQueryPage(name: string, updates: Partial<Pick<QueryPage, 'name' | 'query' | 'view_type'>>): Promise<QueryPage>;
+  updateQueryPage(name: string, updates: Partial<Pick<QueryPage, 'name' | 'query' | 'view_type' | 'view_config'>>): Promise<QueryPage>;
   deleteQueryPage(name: string): Promise<void>;
 
   getColumnOptions(table: string, column: string): Promise<ColumnOption[]>;
