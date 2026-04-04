@@ -629,7 +629,8 @@ body {
   transition: opacity 0.1s;
 }
 
-.row-delete-btn.row-delete-visible {
+/* Show action buttons on row hover via CSS :hover (no JS state needed) */
+.table-row:hover .row-delete-btn {
   opacity: 1;
 }
 
@@ -1368,7 +1369,7 @@ body {
   padding: 0;
 }
 
-.row-expand-btn.row-expand-visible {
+.table-row:hover .row-expand-btn {
   opacity: 1;
 }
 
