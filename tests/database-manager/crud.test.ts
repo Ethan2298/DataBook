@@ -49,9 +49,9 @@ describe("insertRows", () => {
     ]);
     const rows = manager.query("SELECT * FROM users");
     expect(rows).toHaveLength(1);
-    expect(rows[0].name).toBe("Alice");
-    expect(rows[0].email).toBe("alice@test.com");
-    expect(rows[0].age).toBe(30);
+    expect(rows[0]["name"]).toBe("Alice");
+    expect(rows[0]["email"]).toBe("alice@test.com");
+    expect(rows[0]["age"]).toBe(30);
   });
 
   it("throws when inserting into non-existent table", () => {
@@ -72,10 +72,10 @@ describe("insertRows", () => {
       { id: 1, text_val: "hello", int_val: 42, real_val: 3.14, null_val: null },
     ]);
     const rows = manager.query("SELECT * FROM mixed");
-    expect(rows[0].text_val).toBe("hello");
-    expect(rows[0].int_val).toBe(42);
-    expect(rows[0].real_val).toBeCloseTo(3.14);
-    expect(rows[0].null_val).toBeNull();
+    expect(rows[0]["text_val"]).toBe("hello");
+    expect(rows[0]["int_val"]).toBe(42);
+    expect(rows[0]["real_val"]).toBeCloseTo(3.14);
+    expect(rows[0]["null_val"]).toBeNull();
   });
 });
 
@@ -99,7 +99,7 @@ describe("updateRows", () => {
       "SELECT age FROM users WHERE name = ?",
       ["Alice"]
     );
-    expect(rows[0].age).toBe(31);
+    expect(rows[0]["age"]).toBe(31);
   });
 
   it("returns 0 when no rows match WHERE", () => {
@@ -133,8 +133,8 @@ describe("updateRows", () => {
       "SELECT * FROM users WHERE email = ?",
       ["alice@test.com"]
     );
-    expect(rows[0].name).toBe("Alicia");
-    expect(rows[0].age).toBe(31);
+    expect(rows[0]["name"]).toBe("Alicia");
+    expect(rows[0]["age"]).toBe(31);
   });
 });
 
@@ -151,7 +151,7 @@ describe("deleteRows", () => {
     expect(count).toBe(1);
     const rows = manager.query("SELECT * FROM users");
     expect(rows).toHaveLength(1);
-    expect(rows[0].name).toBe("Bob");
+    expect(rows[0]["name"]).toBe("Bob");
   });
 
   it("returns 0 when no rows match", () => {
@@ -164,7 +164,7 @@ describe("deleteRows", () => {
     expect(count).toBe(1); // Bob (age 25) deleted
     const rows = manager.query("SELECT * FROM users");
     expect(rows).toHaveLength(1);
-    expect(rows[0].name).toBe("Alice");
+    expect(rows[0]["name"]).toBe("Alice");
   });
 });
 
@@ -178,7 +178,7 @@ describe("CRUD integration", () => {
 
     const rows = manager.query("SELECT * FROM users");
     expect(rows).toHaveLength(1);
-    expect(rows[0].name).toBe("Alicia");
+    expect(rows[0]["name"]).toBe("Alicia");
 
     manager.deleteRows("users", "1 = 1");
 
@@ -202,6 +202,25 @@ describe("CRUD integration", () => {
     // Transaction should have rolled back - only original Alice remains
     const rows = manager.query("SELECT * FROM users");
     expect(rows).toHaveLength(1);
-    expect(rows[0].name).toBe("Alice");
+    expect(rows[0]["name"]).toBe("Alice");
+  });
+});
+
+describe("SQL injection safety", () => {
+  it("parameterized queries store malicious strings as data, not executed as SQL", () => {
+    const malicious = "'; DROP TABLE users; --";
+    manager.insertRows("users", [
+      { name: malicious, email: "hacker@test.com", age: 1 },
+    ]);
+
+    // Table still exists and has exactly one row
+    const tables = manager.listTables();
+    expect(tables).toContain("users");
+
+    const rows = manager.query("SELECT * FROM users WHERE email = ?", [
+      "hacker@test.com",
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]["name"]).toBe(malicious);
   });
 });

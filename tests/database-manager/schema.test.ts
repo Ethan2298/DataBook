@@ -182,7 +182,7 @@ describe("alterTable", () => {
       manager.alterTable("items", [
         { type: "add_column", column: "name", columnType: "TEXT" },
       ])
-    ).toThrow("duplicate column name"); // column "name" already exists
+    ).toThrow("duplicate column name");
   });
 
   it("throws when dropping non-existent column", () => {
