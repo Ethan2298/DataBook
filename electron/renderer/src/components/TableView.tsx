@@ -13,6 +13,7 @@ import { SortableContext, useSortable, horizontalListSortingStrategy, arrayMove 
 import { CSS } from "@dnd-kit/utilities";
 import type { Row, ColumnInfo, ActiveItem, ColumnOptionsMap } from "../data";
 import DetailPanel from "./DetailPanel";
+import { getPkColumn, isPkColumn } from "./columnUtils";
 import api from "../api";
 
 const restrictToHorizontal: Modifier = ({ transform }) => ({
@@ -174,7 +175,6 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const [columnOrder, setColumnOrder] = useState<string[] | null>(null);
   const [activeDragCol, setActiveDragCol] = useState<string | null>(null);
-  const [hoveredRow, setHoveredRow] = useState<number | null>(null);
   const [detailRow, setDetailRow] = useState<Row | null>(null);
   const resizingRef = useRef<{ col: string; startX: number; startWidth: number } | null>(null);
   const columnWidthsRef = useRef(columnWidths);
@@ -248,18 +248,13 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
   }, [activeItem.name, activeItem.sql]);
 
   // Derive column names, hiding PK/id columns from display
-  const pkCol = columns.find((c) => c.pk)?.name ?? "id";
+  const pkCol = getPkColumn(columns) ?? "id";
   const allColNames = useMemo(() => columns.length > 0
     ? columns.map((c) => c.name)
     : rows.length > 0
       ? Object.keys(rows[0])
       : [], [columns, rows]);
-  const baseColNames = useMemo(() => allColNames.filter((c) => {
-    const colDef = columns.find((cd) => cd.name === c);
-    if (colDef?.pk) return false;
-    if (c.toLowerCase() === "id" || c.toLowerCase() === "rowid") return false;
-    return true;
-  }), [allColNames, columns]);
+  const baseColNames = useMemo(() => allColNames.filter((c) => !isPkColumn(columns, c)), [allColNames, columns]);
 
   // Apply custom column order if set, filtering out stale entries and appending new ones
   const orderedColNames = useMemo(() => {
@@ -618,13 +613,11 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
               key={String(row[pkCol] ?? rowIdx)}
               className="table-row"
               style={{ display: "contents" }}
-              onMouseEnter={() => setHoveredRow(rowIdx)}
-              onMouseLeave={() => setHoveredRow((prev) => prev === rowIdx ? null : prev)}
             >
               {onDeleteRow && (
                 <div className="td td-actions">
                   <button
-                    className={`row-expand-btn${hoveredRow === rowIdx ? " row-expand-visible" : ""}`}
+                    className="row-expand-btn"
                     onClick={() => setDetailRow(row)}
                     title="View details"
                   >
@@ -636,7 +629,7 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
                     </svg>
                   </button>
                   <button
-                    className={`row-delete-btn${hoveredRow === rowIdx ? " row-delete-visible" : ""}`}
+                    className="row-delete-btn"
                     onClick={() => onDeleteRow(pkCol, row[pkCol])}
                     title="Delete row"
                   >

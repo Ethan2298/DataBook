@@ -402,10 +402,18 @@ body {
   border-bottom: 1px solid #262626;
 }
 
-/* ── Row hover (via JS display:contents, target cells by adjacent sibling grid row) ── */
+/* ── Row hover (CSS-only via display:contents) ── */
 
 .table-row {
   display: contents;
+}
+
+.table-row:hover > .td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.table-row:hover > .td-actions {
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .cell-text {

@@ -244,6 +244,10 @@ export default function KanbanView({
   const [collapsedCols, setCollapsedCols] = useState<Set<string>>(new Set());
   const [selectedRow, setSelectedRow] = useState<Row | null>(null);
 
+  // Ref to always read latest activeRow in drag handlers (avoids stale closure)
+  const activeRowRef = useRef<Row | null>(activeRow);
+  useEffect(() => { activeRowRef.current = activeRow; }, [activeRow]);
+
   // Sync local state when props change (e.g. after refresh)
   useEffect(() => { setLocalRows(rows); }, [rows]);
 
@@ -363,32 +367,33 @@ export default function KanbanView({
         if (activeIdx === -1 || overIdx === -1 || activeIdx === overIdx) return prev;
         const updated = [...prev];
         const [moved] = updated.splice(activeIdx, 1);
-        // Update group if crossing columns
+        // Update group if crossing columns (immutable update)
         const targetGroup = String(overRow[groupByCol] ?? "");
-        if (String(moved[groupByCol] ?? "") !== targetGroup) {
-          moved[groupByCol] = targetGroup;
-        }
+        const updatedRow = String(moved[groupByCol] ?? "") !== targetGroup
+          ? { ...moved, [groupByCol]: targetGroup }
+          : moved;
         const insertIdx = overIdx > activeIdx ? overIdx - 1 : overIdx;
-        updated.splice(insertIdx, 0, moved);
+        updated.splice(insertIdx, 0, updatedRow);
         return updated;
       });
     }
   }, [findRowByDragId, groupByCol, pkCol]);
 
   const handleDragEnd = useCallback((_event: DragEndEvent) => {
-    // Read latest localRows from ref to avoid stale closure
+    // Read latest values from refs to avoid stale closure
     const currentRows = localRowsRef.current;
-    if (activeRow && pkCol && onUpdateRow) {
-      const row = currentRows.find((r) => r[pkCol] === activeRow[pkCol]);
+    const currentActiveRow = activeRowRef.current;
+    if (currentActiveRow && pkCol && onUpdateRow) {
+      const row = currentRows.find((r) => r[pkCol] === currentActiveRow[pkCol]);
       const currentGroup = row ? String(row[groupByCol] ?? "") : null;
       const origGroup = dragOrigGroup.current;
       if (currentGroup !== null && origGroup !== null && currentGroup !== origGroup) {
-        onUpdateRow(pkCol, activeRow[pkCol], { [groupByCol]: currentGroup });
+        onUpdateRow(pkCol, currentActiveRow[pkCol], { [groupByCol]: currentGroup });
       }
     }
     setActiveRow(null);
     dragOrigGroup.current = null;
-  }, [activeRow, pkCol, onUpdateRow, groupByCol]);
+  }, [pkCol, onUpdateRow, groupByCol]);
 
   const toggleCollapse = useCallback((group: string) => {
     setCollapsedCols((prev) => {

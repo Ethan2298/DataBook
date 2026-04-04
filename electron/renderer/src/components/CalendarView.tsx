@@ -104,6 +104,7 @@ function InlineAddInput({
   onCancel: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const submittedRef = useRef(false);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -112,11 +113,20 @@ function InlineAddInput({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       const val = inputRef.current?.value.trim();
-      if (val) onSubmit(val);
-      else onCancel();
+      if (val) {
+        submittedRef.current = true;
+        onSubmit(val);
+      } else {
+        onCancel();
+      }
     } else if (e.key === "Escape") {
       onCancel();
     }
+  };
+
+  const handleBlur = () => {
+    if (submittedRef.current) return;
+    onCancel();
   };
 
   return (
@@ -125,7 +135,7 @@ function InlineAddInput({
       className="calendar-inline-input"
       placeholder="New event..."
       onKeyDown={handleKeyDown}
-      onBlur={onCancel}
+      onBlur={handleBlur}
     />
   );
 }

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { Row, ColumnInfo, ColumnOptionsMap } from "../data";
+import { getPkColumn, isPkColumn } from "./columnUtils";
 
 interface DetailPanelProps {
   row: Row | null;
@@ -14,8 +15,12 @@ export default function DetailPanel({ row, columns, columnOptions, tableName, on
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [statusDropdownField, setStatusDropdownField] = useState<string | null>(null);
+  const [localRow, setLocalRow] = useState<Row | null>(row);
   const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Sync localRow when the prop changes (e.g. different row selected)
+  useEffect(() => { setLocalRow(row); }, [row]);
 
   // Reset editing state when row changes
   useEffect(() => {
@@ -30,7 +35,7 @@ export default function DetailPanel({ row, columns, columnOptions, tableName, on
     }
   }, [editingField]);
 
-  const pkCol = columns.find((c) => c.pk)?.name ?? "id";
+  const pkCol = getPkColumn(columns) ?? "id";
 
   const getStatusOptions = useCallback((col: string) => {
     const colDef = columns.find((c) => c.name === col);
@@ -48,12 +53,7 @@ export default function DetailPanel({ row, columns, columnOptions, tableName, on
     return colDef?.type.toUpperCase() === "BOOLEAN";
   };
 
-  const isPkCol = (col: string) => {
-    const colDef = columns.find((c) => c.name === col);
-    if (colDef?.pk) return true;
-    if (col.toLowerCase() === "id" || col.toLowerCase() === "rowid") return true;
-    return false;
-  };
+  const isPkCol = (col: string) => isPkColumn(columns, col);
 
   const getStatusColor = (col: string, val: unknown): string => {
     if (val == null) return "#9B9A97";
@@ -75,31 +75,34 @@ export default function DetailPanel({ row, columns, columnOptions, tableName, on
   };
 
   const commitEdit = () => {
-    if (!editingField || !onUpdateRow || !row) return;
-    if (String(row[editingField]) !== editValue) {
-      onUpdateRow(pkCol, row[pkCol], { [editingField]: editValue });
+    if (!editingField || !onUpdateRow || !localRow) return;
+    if (String(localRow[editingField]) !== editValue) {
+      onUpdateRow(pkCol, localRow[pkCol], { [editingField]: editValue });
+      setLocalRow((prev) => prev ? { ...prev, [editingField]: editValue } : prev);
     }
     setEditingField(null);
   };
 
   const toggleCheckbox = (col: string) => {
-    if (!onUpdateRow || !row) return;
-    const newVal = row[col] ? 0 : 1;
-    onUpdateRow(pkCol, row[pkCol], { [col]: newVal });
+    if (!onUpdateRow || !localRow) return;
+    const newVal = localRow[col] ? 0 : 1;
+    onUpdateRow(pkCol, localRow[pkCol], { [col]: newVal });
+    setLocalRow((prev) => prev ? { ...prev, [col]: newVal } : prev);
   };
 
   const selectStatus = (col: string, value: string) => {
-    if (!onUpdateRow || !row) return;
-    onUpdateRow(pkCol, row[pkCol], { [col]: value });
+    if (!onUpdateRow || !localRow) return;
+    onUpdateRow(pkCol, localRow[pkCol], { [col]: value });
+    setLocalRow((prev) => prev ? { ...prev, [col]: value } : prev);
     setStatusDropdownField(null);
   };
 
   // Get display columns (all column names from the row)
   const displayCols = columns.length > 0
     ? columns.map((c) => c.name)
-    : row ? Object.keys(row) : [];
+    : localRow ? Object.keys(localRow) : [];
 
-  if (!row) return null;
+  if (!localRow) return null;
 
   return (
     <>
@@ -123,7 +126,7 @@ export default function DetailPanel({ row, columns, columnOptions, tableName, on
                   <label className="checkbox-cell" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
-                      checked={!!row[col]}
+                      checked={!!localRow[col]}
                       onChange={() => toggleCheckbox(col)}
                       disabled={!onUpdateRow}
                     />
@@ -138,10 +141,10 @@ export default function DetailPanel({ row, columns, columnOptions, tableName, on
                     }}
                     style={{ cursor: onUpdateRow ? "pointer" : "default" }}
                   >
-                    {row[col] != null ? (
+                    {localRow[col] != null ? (
                       <span className="badge">
-                        <span className="badge-dot" style={{ backgroundColor: getStatusColor(col, row[col]) }} />
-                        {formatValue(row[col])}
+                        <span className="badge-dot" style={{ backgroundColor: getStatusColor(col, localRow[col]) }} />
+                        {formatValue(localRow[col])}
                       </span>
                     ) : (
                       <span className="detail-panel-empty">--</span>
@@ -149,7 +152,7 @@ export default function DetailPanel({ row, columns, columnOptions, tableName, on
                     {statusDropdownField === col && (
                       <DetailStatusDropdown
                         options={getStatusOptions(col)}
-                        currentValue={row[col] == null ? "" : String(row[col])}
+                        currentValue={localRow[col] == null ? "" : String(localRow[col])}
                         onSelect={(val) => selectStatus(col, val)}
                         onClose={() => setStatusDropdownField(null)}
                       />
@@ -170,9 +173,9 @@ export default function DetailPanel({ row, columns, columnOptions, tableName, on
                 ) : (
                   <div
                     className={`detail-panel-text${onUpdateRow && !isPkCol(col) ? " editable" : ""}`}
-                    onClick={() => !isStatusCol(col) && !isCheckboxCol(col) && startEdit(col, row[col])}
+                    onClick={() => !isStatusCol(col) && !isCheckboxCol(col) && startEdit(col, localRow[col])}
                   >
-                    {formatValue(row[col]) || <span className="detail-panel-empty">--</span>}
+                    {formatValue(localRow[col]) || <span className="detail-panel-empty">--</span>}
                   </div>
                 )}
               </div>
