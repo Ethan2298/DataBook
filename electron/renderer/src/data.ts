@@ -45,3 +45,14 @@ export interface ViewConfig {
   titleCol?: string;
   dateCol?: string;
 }
+
+export type FieldType = 'text' | 'number' | 'select' | 'multi_select' | 'date' | 'checkbox' | 'url' | 'email' | 'phone' | 'status' | 'person' | 'file' | 'relation' | 'rollup' | 'created_time' | 'created_by' | 'last_edited_time' | 'last_edited_by' | 'unique_id';
+
+export interface ColumnMetadata {
+  column: string;
+  field_type: FieldType;
+  config: Record<string, unknown>;
+}
+
+// Map of column_name -> ColumnMetadata
+export type ColumnMetadataMap = Record<string, ColumnMetadata>;

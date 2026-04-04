@@ -8,7 +8,7 @@ import EmptyState from "./components/EmptyState";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ColumnPicker from "./components/ColumnPicker";
 import api from "./api";
-import type { QueryPage, Row, ViewType, ViewConfig, ActiveItem, ColumnInfo, ColumnOptionsMap } from "./data";
+import type { QueryPage, Row, ViewType, ViewConfig, ActiveItem, ColumnInfo, ColumnOptionsMap, ColumnMetadataMap } from "./data";
 
 export default function App() {
   // Database state
@@ -24,6 +24,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [columnOptions, setColumnOptions] = useState<ColumnOptionsMap>({});
   const [viewConfig, setViewConfig] = useState<ViewConfig>({});
+  const [columnMetadata, setColumnMetadata] = useState<ColumnMetadataMap>({});
 
   // Ref to read latest activeItem inside effects without re-subscribing
   const activeItemRef = useRef(activeItem);
@@ -55,8 +56,17 @@ export default function App() {
           setQueryPages(pages);
           setColumnOptions(colOpts);
 
-          // Re-run the active view's query
+          // Refresh column metadata for current table
           const current = activeItemRef.current;
+          if (current) {
+            const tblName = current.kind === "table" ? current.name : current.sql.match(/FROM\s+["']?(\w+)["']?/i)?.[1];
+            if (tblName) {
+              const meta = await api.getAllColumnMetadata(tblName);
+              setColumnMetadata(meta);
+            }
+          }
+
+          // Re-run the active view's query
           if (current) {
             const result = await api.query(current.sql);
             setRows(result);
@@ -124,8 +134,12 @@ export default function App() {
         // Try to extract table name from simple SELECT queries to get real schema types
         const tableMatch = first.query.match(/FROM\s+["']?(\w+)["']?/i);
         if (tableMatch && tbls.includes(tableMatch[1])) {
-          const cols = await api.describeTable(tableMatch[1]);
+          const [cols, meta] = await Promise.all([
+            api.describeTable(tableMatch[1]),
+            api.getAllColumnMetadata(tableMatch[1]),
+          ]);
           setColumns(cols);
+          setColumnMetadata(meta);
         } else if (result.length > 0) {
           setColumns(
             Object.keys(result[0]).map((key, i) => ({
@@ -137,8 +151,10 @@ export default function App() {
               pk: 0,
             }))
           );
+          setColumnMetadata({});
         } else {
           setColumns([]);
+          setColumnMetadata({});
         }
       } else if (tbls.length > 0) {
         // Fallback: show first table raw
@@ -146,16 +162,19 @@ export default function App() {
         const sql = `SELECT * FROM "${tableName}"`;
         const item: ActiveItem = { kind: "table", name: tableName, viewType: "table", sql };
         setActiveItem(item);
-        const [cols, result] = await Promise.all([
+        const [cols, result, meta] = await Promise.all([
           api.describeTable(tableName),
           api.query(sql),
+          api.getAllColumnMetadata(tableName),
         ]);
         setColumns(cols);
         setRows(result);
+        setColumnMetadata(meta);
       } else {
         setActiveItem(null);
         setRows([]);
         setColumns([]);
+        setColumnMetadata({});
       }
     } catch (err) {
       setError(String(err));
@@ -214,14 +233,16 @@ export default function App() {
     setActiveItem(item);
 
     try {
-      const [cols, result, colOpts] = await Promise.all([
+      const [cols, result, colOpts, meta] = await Promise.all([
         api.describeTable(tableName),
         api.query(item.sql),
         api.getAllColumnOptions(),
+        api.getAllColumnMetadata(tableName),
       ]);
       setColumns(cols);
       setRows(result);
       setColumnOptions(colOpts);
+      setColumnMetadata(meta);
       setError(null);
     } catch (err) {
       setError(String(err));
@@ -257,8 +278,12 @@ export default function App() {
       const tableMatch = page.query.match(/FROM\s+["']?(\w+)["']?/i);
       if (tableMatch) {
         try {
-          const cols = await api.describeTable(tableMatch[1]);
+          const [cols, meta] = await Promise.all([
+            api.describeTable(tableMatch[1]),
+            api.getAllColumnMetadata(tableMatch[1]),
+          ]);
           setColumns(cols);
+          setColumnMetadata(meta);
         } catch {
           // Fallback: derive from result keys
           if (result.length > 0) {
@@ -270,6 +295,7 @@ export default function App() {
           } else {
             setColumns([]);
           }
+          setColumnMetadata({});
         }
       } else if (result.length > 0) {
         setColumns(Object.keys(result[0]).map((key, i) => ({
@@ -277,8 +303,10 @@ export default function App() {
           type: typeof result[0][key] === "number" ? "INTEGER" : "TEXT",
           notnull: 0, dflt_value: null, pk: 0,
         })));
+        setColumnMetadata({});
       } else {
         setColumns([]);
+        setColumnMetadata({});
       }
       // Fetch column options for status rendering
       const colOpts = await api.getAllColumnOptions();
@@ -304,20 +332,35 @@ export default function App() {
     if (activeItem.kind === "table") {
       await selectTable(activeItem.name);
     } else {
-      await runQuery(activeItem.sql);
+      // For query pages: refresh rows, columns, AND metadata
+      try {
+        const result = await api.query(activeItem.sql);
+        setRows(result);
+        const tableMatch = activeItem.sql.match(/FROM\s+["']?(\w+)["']?/i);
+        if (tableMatch) {
+          const [cols, meta, colOpts] = await Promise.all([
+            api.describeTable(tableMatch[1]),
+            api.getAllColumnMetadata(tableMatch[1]),
+            api.getAllColumnOptions(),
+          ]);
+          setColumns(cols);
+          setColumnMetadata(meta);
+          setColumnOptions(colOpts);
+        }
+      } catch (err) {
+        setError(String(err));
+      }
     }
-    // Refresh sidebar + column options
+    // Refresh sidebar
     if (currentDb) {
-      const [tbls, pages, colOpts] = await Promise.all([
+      const [tbls, pages] = await Promise.all([
         api.listTables(),
         api.listQueryPages(),
-        api.getAllColumnOptions(),
       ]);
       setTables(tbls);
       setQueryPages(pages);
-      setColumnOptions(colOpts);
     }
-  }, [activeItem, currentDb, selectTable, runQuery]);
+  }, [activeItem, currentDb, selectTable]);
 
   // Create table
   const createTable = useCallback(async (tableName: string, columnDefs: { name: string; type: string }[]) => {
@@ -537,9 +580,15 @@ export default function App() {
                 columns={columns}
                 activeItem={activeItem}
                 columnOptions={columnOptions}
+                columnMetadata={columnMetadata}
                 onInsertRow={activeItem.kind === "table" ? (row) => insertRow(activeItem.name, row) : undefined}
                 onUpdateRow={activeItem.kind === "table" ? (pkCol, pkVal, updates) => updateRow(activeItem.name, pkCol, pkVal, updates) : undefined}
                 onDeleteRow={activeItem.kind === "table" ? (pkCol, pkVal) => deleteRow(activeItem.name, pkCol, pkVal) : undefined}
+                onFieldTypeChange={activeItem.kind === "table" ? async (col, fieldType, config) => {
+                  await api.setColumnMetadata(activeItem.name, col, fieldType, config);
+                  const meta = await api.getAllColumnMetadata(activeItem.name);
+                  setColumnMetadata(meta);
+                } : undefined}
               />
             )}
             {activeItem.viewType === "kanban" && (

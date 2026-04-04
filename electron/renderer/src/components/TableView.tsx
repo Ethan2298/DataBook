@@ -11,9 +11,11 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { Row, ColumnInfo, ActiveItem, ColumnOptionsMap } from "../data";
+import type { Row, ColumnInfo, ActiveItem, ColumnOptionsMap, ColumnMetadataMap, ColumnMetadata, FieldType } from "../data";
 import DetailPanel from "./DetailPanel";
 import api from "../api";
+import CellRenderer from "./cells/CellRenderer";
+import FieldTypePicker, { fieldTypeIcon } from "./FieldTypePicker";
 
 const restrictToHorizontal: Modifier = ({ transform }) => ({
   ...transform,
@@ -160,22 +162,22 @@ interface TableViewProps {
   columns: ColumnInfo[];
   activeItem: ActiveItem;
   columnOptions: ColumnOptionsMap;
+  columnMetadata: ColumnMetadataMap;
   onInsertRow?: (row: Row) => void;
   onUpdateRow?: (pkCol: string, pkVal: unknown, updates: Row) => void;
   onDeleteRow?: (pkCol: string, pkVal: unknown) => void;
+  onFieldTypeChange?: (column: string, fieldType: FieldType, config: Record<string, unknown>) => void;
 }
 
-export default function TableView({ rows, columns, activeItem, columnOptions, onInsertRow, onUpdateRow, onDeleteRow }: TableViewProps) {
-  const [editingCell, setEditingCell] = useState<{ rowIdx: number; col: string } | null>(null);
-  const [editValue, setEditValue] = useState("");
+export default function TableView({ rows, columns, activeItem, columnOptions, columnMetadata, onInsertRow, onUpdateRow, onDeleteRow, onFieldTypeChange }: TableViewProps) {
   const [showNewRow, setShowNewRow] = useState(false);
   const [newRowValues, setNewRowValues] = useState<Row>({});
-  const [statusDropdown, setStatusDropdown] = useState<{ rowIdx: number; col: string } | null>(null);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const [columnOrder, setColumnOrder] = useState<string[] | null>(null);
   const [activeDragCol, setActiveDragCol] = useState<string | null>(null);
   const [hoveredRow, setHoveredRow] = useState<number | null>(null);
   const [detailRow, setDetailRow] = useState<Row | null>(null);
+  const [fieldTypePicker, setFieldTypePicker] = useState<string | null>(null);
   const resizingRef = useRef<{ col: string; startX: number; startWidth: number } | null>(null);
   const columnWidthsRef = useRef(columnWidths);
   columnWidthsRef.current = columnWidths;
@@ -381,6 +383,26 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
     return () => document.removeEventListener("mousedown", handler);
   }, [showColumnVisibility]);
 
+  // Build effective metadata for each column: explicit metadata > auto-detect from SQLite type > default 'text'
+  const getEffectiveMetadata = useCallback((col: string): ColumnMetadata => {
+    // Check explicit metadata first
+    if (columnMetadata[col]) return columnMetadata[col];
+
+    // Auto-detect from SQLite column type
+    const colDef = columns.find((c) => c.name === col);
+    if (colDef) {
+      const upper = colDef.type.toUpperCase();
+      if (upper === "BOOLEAN") return { column: col, field_type: "checkbox", config: {} };
+      if (upper === "STATUS") {
+        const key = `${tableName}.${col}`;
+        const opts = columnOptions[key] ?? [];
+        return { column: col, field_type: "select", config: { options: opts.map((o) => ({ value: o.value, color: o.color })) } };
+      }
+    }
+
+    return { column: col, field_type: "text", config: {} };
+  }, [columnMetadata, columns, tableName, columnOptions]);
+
   const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveDragCol(String(event.active.id));
   }, []);
@@ -405,20 +427,6 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
     });
   }, [colNames, tableName]);
 
-  const startEdit = (rowIdx: number, col: string, value: unknown) => {
-    setEditingCell({ rowIdx, col });
-    setEditValue(value == null ? "" : String(value));
-  };
-
-  const commitEdit = () => {
-    if (!editingCell || !onUpdateRow) return;
-    const row = sortedRows[editingCell.rowIdx];
-    if (row && String(row[editingCell.col]) !== editValue) {
-      onUpdateRow(pkCol, row[pkCol], { [editingCell.col]: editValue });
-    }
-    setEditingCell(null);
-  };
-
   const handleInsert = () => {
     if (!onInsertRow) return;
     const cleaned: Row = {};
@@ -430,56 +438,6 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
       setNewRowValues({});
       setShowNewRow(false);
     }
-  };
-
-  const isCheckboxCol = (col: string): boolean => {
-    const colDef = columns.find((c) => c.name === col);
-    if (!colDef) return false;
-    return colDef.type.toUpperCase() === "BOOLEAN";
-  };
-
-  const toggleCheckbox = (rowIdx: number, col: string) => {
-    if (!onUpdateRow) return;
-    const row = sortedRows[rowIdx];
-    const current = row[col];
-    const newVal = current ? 0 : 1;
-    onUpdateRow(pkCol, row[pkCol], { [col]: newVal });
-  };
-
-  // Check if a column has STATUS options defined
-  const getStatusOptions = (col: string) => {
-    // Check column type first
-    const colDef = columns.find((c) => c.name === col);
-    if (colDef && colDef.type.toUpperCase() === "STATUS") {
-      const key = `${tableName}.${col}`;
-      return columnOptions[key] ?? [];
-    }
-    return [];
-  };
-
-  const isStatusCol = (col: string): boolean => {
-    return getStatusOptions(col).length > 0;
-  };
-
-  // Get color for a status value from options
-  const getStatusColor = (col: string, val: unknown): string => {
-    if (val == null) return "#9B9A97";
-    const options = getStatusOptions(col);
-    const opt = options.find((o) => o.value === String(val));
-    return opt?.color ?? "#9B9A97";
-  };
-
-  const selectStatus = (rowIdx: number, col: string, value: string) => {
-    if (!onUpdateRow) return;
-    const row = sortedRows[rowIdx];
-    onUpdateRow(pkCol, row[pkCol], { [col]: value });
-    setStatusDropdown(null);
-  };
-
-  const formatValue = (val: unknown): string => {
-    if (val == null) return "";
-    if (typeof val === "object") return JSON.stringify(val);
-    return String(val);
   };
 
   // Compute a CSS grid-template-columns value so every row shares the same grid
@@ -605,6 +563,14 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
                   onResizeStart={handleResizeStart}
                   sortDir={sortState?.col === col ? sortState.dir : null}
                   onSortClick={handleSortClick}
+                  fieldType={getEffectiveMetadata(col).field_type}
+                  showPicker={fieldTypePicker === col}
+                  onTogglePicker={() => setFieldTypePicker(fieldTypePicker === col ? null : col)}
+                  onFieldTypeChange={onFieldTypeChange ? (ft) => {
+                    onFieldTypeChange(col, ft, ft === getEffectiveMetadata(col).field_type ? getEffectiveMetadata(col).config : {});
+                    setFieldTypePicker(null);
+                  } : undefined}
+                  onClosePicker={() => setFieldTypePicker(null)}
                 />
               ))}
             </SortableContext>
@@ -647,66 +613,22 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
                   </button>
                 </div>
               )}
-              {colNames.map((col) => (
-                <div
-                  key={col}
-                  className={`td${isCheckboxCol(col) ? " td-checkbox" : ""}`}
-                  onDoubleClick={() => !isCheckboxCol(col) && !isStatusCol(col) && onUpdateRow && startEdit(rowIdx, col, row[col])}
-                >
-                  {isCheckboxCol(col) ? (
-                    <label className="checkbox-cell" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={!!row[col]}
-                        onChange={() => toggleCheckbox(rowIdx, col)}
-                        disabled={!onUpdateRow}
-                      />
-                      <span className="checkbox-mark" />
-                    </label>
-                  ) : isStatusCol(col) ? (
-                    <div className="status-cell" onClick={(e) => {
-                      e.stopPropagation();
-                      if (!onUpdateRow) return;
-                      setStatusDropdown(
-                        statusDropdown?.rowIdx === rowIdx && statusDropdown?.col === col
-                          ? null
-                          : { rowIdx, col }
-                      );
-                    }}>
-                      {row[col] != null ? (
-                        <span className="badge">
-                          <span className="badge-dot" style={{ backgroundColor: getStatusColor(col, row[col]) }} />
-                          {formatValue(row[col])}
-                        </span>
-                      ) : (
-                        <span className="cell-text status-empty">---</span>
-                      )}
-                      {statusDropdown?.rowIdx === rowIdx && statusDropdown?.col === col && (
-                        <StatusDropdown
-                          options={getStatusOptions(col)}
-                          currentValue={row[col] == null ? "" : String(row[col])}
-                          onSelect={(val) => selectStatus(rowIdx, col, val)}
-                          onClose={() => setStatusDropdown(null)}
-                        />
-                      )}
-                    </div>
-                  ) : editingCell?.rowIdx === rowIdx && editingCell.col === col ? (
-                    <input
-                      className="cell-edit-input"
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      onBlur={commitEdit}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") commitEdit();
-                        if (e.key === "Escape") setEditingCell(null);
+              {colNames.map((col) => {
+                const meta = getEffectiveMetadata(col);
+                return (
+                  <div key={col} className={`td${meta.field_type === "checkbox" ? " td-checkbox" : ""}`}>
+                    <CellRenderer
+                      value={row[col]}
+                      metadata={meta}
+                      onCommitEdit={(val) => {
+                        if (!onUpdateRow) return;
+                        onUpdateRow(pkCol, row[pkCol], { [col]: val });
                       }}
-                      autoFocus
+                      disabled={!onUpdateRow}
                     />
-                  ) : (
-                    <span className="cell-text">{formatValue(row[col])}</span>
-                  )}
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
           ))}
 
@@ -721,7 +643,8 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
                     <span className="cell-text auto-text">auto</span>
                   </div>
                 );
-                if (isCheckboxCol(col)) return (
+                const meta = getEffectiveMetadata(col);
+                if (meta.field_type === "checkbox") return (
                   <div key={col} className="td td-checkbox">
                     <label className="checkbox-cell">
                       <input
@@ -733,8 +656,37 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
                     </label>
                   </div>
                 );
-                if (isStatusCol(col)) {
-                  const options = getStatusOptions(col);
+                if (meta.field_type === "select" || meta.field_type === "multi_select") {
+                  const options = (meta.config.options as { value: string }[]) ?? [];
+                  if (meta.field_type === "multi_select") {
+                    const selected: string[] = (() => {
+                      const v = newRowValues[col];
+                      if (!v) return [];
+                      try { const p = JSON.parse(String(v)); if (Array.isArray(p)) return p; } catch {}
+                      return [];
+                    })();
+                    return (
+                      <div key={col} className="td">
+                        <div className="multi-select-new-row">
+                          {options.map((opt) => (
+                            <label key={opt.value} className="multi-select-new-row-item">
+                              <input
+                                type="checkbox"
+                                checked={selected.includes(opt.value)}
+                                onChange={() => {
+                                  const next = selected.includes(opt.value)
+                                    ? selected.filter((s) => s !== opt.value)
+                                    : [...selected, opt.value];
+                                  setNewRowValues((prev) => ({ ...prev, [col]: JSON.stringify(next) }));
+                                }}
+                              />
+                              <span>{opt.value}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
                   return (
                     <div key={col} className="td">
                       <select
@@ -750,10 +702,88 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
                     </div>
                   );
                 }
+                if (meta.field_type === "date") {
+                  const includeTime = (meta.config as { includeTime?: boolean }).includeTime;
+                  return (
+                    <div key={col} className="td">
+                      <input
+                        className="cell-edit-input cell-date"
+                        type={includeTime ? "datetime-local" : "date"}
+                        value={String(newRowValues[col] ?? "")}
+                        onChange={(e) => setNewRowValues((prev) => ({ ...prev, [col]: e.target.value }))}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleInsert();
+                          if (e.key === "Escape") setShowNewRow(false);
+                        }}
+                      />
+                    </div>
+                  );
+                }
+                // Status: grouped select
+                if (meta.field_type === "status") {
+                  const groups = (meta.config.groups as { name: string; options: string[] }[]) ?? [];
+                  const allOptions = groups.flatMap((g) => g.options);
+                  return (
+                    <div key={col} className="td">
+                      <select
+                        className="status-select"
+                        value={String(newRowValues[col] ?? "")}
+                        onChange={(e) => setNewRowValues((prev) => ({ ...prev, [col]: e.target.value }))}
+                      >
+                        <option value="">—</option>
+                        {groups.map((g) => (
+                          <optgroup key={g.name} label={g.name}>
+                            {g.options.map((opt) => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </optgroup>
+                        ))}
+                        {allOptions.length === 0 && <option disabled>No options configured</option>}
+                      </select>
+                    </div>
+                  );
+                }
+                // Person: dropdown of configured names
+                if (meta.field_type === "person") {
+                  const people = (meta.config.people as { name: string }[]) ?? [];
+                  return (
+                    <div key={col} className="td">
+                      <select
+                        className="status-select"
+                        value={String(newRowValues[col] ?? "")}
+                        onChange={(e) => setNewRowValues((prev) => ({ ...prev, [col]: e.target.value }))}
+                      >
+                        <option value="">—</option>
+                        {people.map((p) => (
+                          <option key={p.name} value={p.name}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                }
+                // Read-only auto types: show "auto" label
+                if (["created_time", "created_by", "last_edited_time", "last_edited_by", "unique_id", "rollup"].includes(meta.field_type)) {
+                  return (
+                    <div key={col} className="td">
+                      <span className="cell-text auto-text">auto</span>
+                    </div>
+                  );
+                }
+                // Determine input type for remaining editable types
+                const inputType = (() => {
+                  switch (meta.field_type) {
+                    case "number": return "number";
+                    case "email": return "email";
+                    case "url": return "url";
+                    case "phone": return "tel";
+                    default: return "text";
+                  }
+                })();
                 return (
                   <div key={col} className="td">
                     <input
                       className="cell-edit-input"
+                      type={inputType}
                       placeholder={col}
                       value={String(newRowValues[col] ?? "")}
                       onChange={(e) => setNewRowValues((prev) => ({ ...prev, [col]: e.target.value }))}
@@ -801,12 +831,17 @@ export default function TableView({ rows, columns, activeItem, columnOptions, on
 
 // ── Sortable Header Cell ──────────────────────────────────────────────────
 
-function SortableHeaderCell({ col, isActive, onResizeStart, sortDir, onSortClick }: {
+function SortableHeaderCell({ col, isActive, onResizeStart, sortDir, onSortClick, fieldType, showPicker, onTogglePicker, onFieldTypeChange, onClosePicker }: {
   col: string;
   isActive: boolean;
   onResizeStart: (col: string, e: React.MouseEvent) => void;
   sortDir: "asc" | "desc" | null;
   onSortClick: (col: string) => void;
+  fieldType: FieldType;
+  showPicker: boolean;
+  onTogglePicker: () => void;
+  onFieldTypeChange?: (fieldType: FieldType) => void;
+  onClosePicker: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: col });
   const style: React.CSSProperties = {
@@ -818,6 +853,16 @@ function SortableHeaderCell({ col, isActive, onResizeStart, sortDir, onSortClick
 
   return (
     <div ref={setNodeRef} className="th" style={style} {...attributes} {...listeners}>
+      {onFieldTypeChange && (
+        <button
+          className="field-type-btn"
+          onClick={(e) => { e.stopPropagation(); onTogglePicker(); }}
+          onPointerDown={(e) => e.stopPropagation()}
+          title={`Field type: ${fieldType}`}
+        >
+          {fieldTypeIcon(fieldType)}
+        </button>
+      )}
       <span
         onClick={(e) => {
           e.stopPropagation();
@@ -834,44 +879,13 @@ function SortableHeaderCell({ col, isActive, onResizeStart, sortDir, onSortClick
         onMouseDown={(e) => { e.stopPropagation(); onResizeStart(col, e); }}
         onPointerDown={(e) => e.stopPropagation()}
       />
-    </div>
-  );
-}
-
-// ── Status Dropdown Component ──────────────────────────────────────────────
-
-interface StatusDropdownProps {
-  options: { value: string; color: string }[];
-  currentValue: string;
-  onSelect: (value: string) => void;
-  onClose: () => void;
-}
-
-function StatusDropdown({ options, currentValue, onSelect, onClose }: StatusDropdownProps) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [onClose]);
-
-  return (
-    <div className="status-dropdown" ref={ref} onClick={(e) => e.stopPropagation()}>
-      {options.map((opt) => (
-        <div
-          key={opt.value}
-          className={`status-dropdown-item ${opt.value === currentValue ? "active" : ""}`}
-          onClick={() => onSelect(opt.value)}
-        >
-          <span className="badge-dot" style={{ backgroundColor: opt.color }} />
-          <span>{opt.value}</span>
-        </div>
-      ))}
+      {showPicker && onFieldTypeChange && (
+        <FieldTypePicker
+          currentType={fieldType}
+          onSelect={onFieldTypeChange}
+          onClose={onClosePicker}
+        />
+      )}
     </div>
   );
 }

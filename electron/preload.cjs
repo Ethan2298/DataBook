@@ -45,4 +45,15 @@ contextBridge.exposeInMainWorld('databook', {
   // Column Order
   getColumnOrder: (table) => ipcRenderer.invoke('db:getColumnOrder', table),
   setColumnOrder: (table, columns) => ipcRenderer.invoke('db:setColumnOrder', table, columns),
+
+  // Column Metadata (Field Types)
+  setColumnMetadata: (table, column, fieldType, config) => ipcRenderer.invoke('db:setColumnMetadata', table, column, fieldType, config),
+  getColumnMetadata: (table, column) => ipcRenderer.invoke('db:getColumnMetadata', table, column),
+  getAllColumnMetadata: (table) => ipcRenderer.invoke('db:getAllColumnMetadata', table),
+  removeColumnMetadata: (table, column) => ipcRenderer.invoke('db:removeColumnMetadata', table, column),
+
+  // Relation / Rollup
+  resolveRelation: (targetTable, ids, displayColumn) => ipcRenderer.invoke('db:resolveRelation', targetTable, ids, displayColumn),
+  searchRelation: (targetTable, displayColumn, searchText) => ipcRenderer.invoke('db:searchRelation', targetTable, displayColumn, searchText),
+  computeRollup: (table, rowId, config) => ipcRenderer.invoke('db:computeRollup', table, rowId, config),
 });

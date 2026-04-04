@@ -69,6 +69,15 @@ handle('db:removeColumnOption', (m, table, column, value) => m.removeColumnOptio
 handle('db:getColumnOrder', (m, table) => m.getColumnOrder(table));
 handle('db:setColumnOrder', (m, table, columns) => m.setColumnOrder(table, columns));
 
+// ── Column Metadata (Field Types) ──────────────────────────────────────────
+handle('db:setColumnMetadata', (m, table, column, fieldType, config) => m.setColumnMetadata(table, column, fieldType, config));
+handle('db:getColumnMetadata', (m, table, column) => m.getColumnMetadata(table, column));
+handle('db:getAllColumnMetadata', (m, table) => m.getAllColumnMetadata(table));
+handle('db:removeColumnMetadata', (m, table, column) => m.removeColumnMetadata(table, column));
+handle('db:resolveRelation', (m, targetTable, ids, displayColumn) => m.resolveRelation(targetTable, ids, displayColumn));
+handle('db:searchRelation', (m, targetTable, displayColumn, searchText) => m.searchRelation(targetTable, displayColumn, searchText));
+handle('db:computeRollup', (m, table, rowId, config) => m.computeRollup(table, rowId, config));
+
 // ── File watcher for external changes (e.g. MCP server) ─────────────────────
 
 let mainWindow = null;
@@ -87,7 +96,6 @@ function startWatching() {
 
   fsWatcher.on('all', (_eventType, filePath) => {
     if (!filePath.endsWith('.db')) return;
-    if (path.basename(filePath).startsWith('.meta')) return;
     // Debounce: collapse rapid changes into a single refresh
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {

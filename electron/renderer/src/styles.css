@@ -1368,3 +1368,330 @@ body {
   color: #ebebeb;
   background: rgba(255, 255, 255, 0.08);
 }
+/* ── Field Type System ── */
+
+.cell-number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cell-date {
+  font-variant-numeric: tabular-nums;
+}
+
+.cell-url a,
+.cell-email a {
+  color: #2383E2;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.cell-url a:hover,
+.cell-email a:hover {
+  text-decoration: underline;
+}
+
+.cell-url,
+.cell-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Multi-Select ── */
+
+.cell-multi-select {
+  min-height: 24px;
+}
+
+.multi-select-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+}
+
+.badge-sm {
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.multi-select-dropdown {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.multi-select-check {
+  width: 16px;
+  font-size: 12px;
+  color: #4DAB6F;
+  text-align: center;
+}
+
+.multi-select-new-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.multi-select-new-row-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #ECECEA;
+  cursor: pointer;
+}
+
+.status-dropdown-clear {
+  border-bottom: 1px solid #363636;
+  color: #9B9A97;
+  font-size: 12px;
+}
+
+/* ── Phone Cell ── */
+
+.cell-phone a {
+  color: #2383E2;
+  text-decoration: none;
+  font-size: 13px;
+}
+.cell-phone a:hover {
+  text-decoration: underline;
+}
+
+/* ── Status Grouped Dropdown ── */
+
+.status-grouped-dropdown {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.status-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 2px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #9B9A97;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ── Person Cell ── */
+
+.person-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.person-initial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.person-initial-sm {
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+}
+
+.person-name {
+  font-size: 13px;
+  color: #ECECEA;
+}
+
+/* ── File Cell ── */
+
+.cell-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.file-thumbnail {
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.file-name {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-name a {
+  color: #2383E2;
+  text-decoration: none;
+}
+.file-name a:hover {
+  text-decoration: underline;
+}
+
+/* ── Relation Cell ── */
+
+.cell-relation {
+  min-height: 28px;
+}
+
+.relation-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.relation-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  background: rgba(35, 131, 226, 0.15);
+  color: #2383E2;
+  border-radius: 3px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.relation-dropdown {
+  min-width: 200px;
+}
+
+.relation-search {
+  width: 100%;
+  padding: 6px 10px;
+  background: #2A2A2A;
+  border: none;
+  border-bottom: 1px solid #363636;
+  color: #ECECEA;
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+}
+.relation-search::placeholder {
+  color: #5A5A58;
+}
+
+/* ── Rollup / Read-only Cell ── */
+
+.cell-readonly {
+  color: #9B9A97;
+  font-style: italic;
+}
+
+.cell-rollup {
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Unique ID Cell ── */
+
+.unique-id-cell {
+  font-family: 'SF Mono', 'Fira Code', 'Fira Mono', monospace;
+  font-size: 12px;
+  color: #9B9A97;
+  font-style: normal;
+}
+
+/* ── Field Type Picker ── */
+
+.field-type-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: none;
+  border: none;
+  color: #5A5A58;
+  font-size: 10px;
+  cursor: pointer;
+  border-radius: 3px;
+  flex-shrink: 0;
+  padding: 0;
+  margin-right: 2px;
+  transition: color 0.1s, background 0.1s;
+}
+
+.field-type-btn:hover {
+  color: #9B9A97;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.field-type-picker {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 200;
+  min-width: 160px;
+  background: #1E1E1E;
+  border: 1px solid #363636;
+  border-radius: 6px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  margin-top: 2px;
+}
+
+.field-type-picker-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #5A5A58;
+  padding: 4px 10px 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.field-type-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #E8E8E3;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.field-type-picker-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.field-type-picker-item.active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.field-type-icon {
+  width: 18px;
+  text-align: center;
+  font-size: 13px;
+  color: #9B9A97;
+}
+
+/* Date input dark theme */
+input[type="date"],
+input[type="datetime-local"] {
+  color-scheme: dark;
+}
+
+/* Number input hide spinners */
+input[type="number"].cell-edit-input::-webkit-inner-spin-button,
+input[type="number"].cell-edit-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

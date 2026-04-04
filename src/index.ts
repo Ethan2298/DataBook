@@ -116,6 +116,12 @@ server.tool(
   }
 );
 
+const FIELD_TYPES = [
+  "text", "number", "select", "multi_select", "date", "checkbox", "url", "email",
+  "phone", "status", "person", "file", "relation", "rollup",
+  "created_time", "created_by", "last_edited_time", "last_edited_by", "unique_id",
+] as const;
+
 const ColumnDefSchema = z.object({
   name: z.string().describe("Column name"),
   type: z
@@ -126,6 +132,8 @@ const ColumnDefSchema = z.object({
   notNull: z.boolean().optional().describe("Add NOT NULL constraint"),
   unique: z.boolean().optional().describe("Add UNIQUE constraint"),
   defaultValue: z.string().optional().describe("SQL default value expression, e.g. '0' or \"'unknown'\""),
+  fieldType: z.enum(FIELD_TYPES).optional().describe("DataBook field type controlling how the column renders in the UI: text, number, select, multi_select, date, checkbox, url, email"),
+  fieldConfig: z.record(z.unknown()).optional().describe("Field type config. For select/multi_select: { options: [{ value, color }] }. For number: { format, decimals, prefix, suffix }."),
 });
 
 server.tool(
@@ -155,6 +163,8 @@ const AlterOperationSchema = z.discriminatedUnion("type", [
     columnType: z.string().describe("SQLite type for the new column"),
     notNull: z.boolean().optional(),
     defaultValue: z.string().optional().describe("Default value expression"),
+    fieldType: z.enum(FIELD_TYPES).optional().describe("DataBook field type for the new column"),
+    fieldConfig: z.record(z.unknown()).optional().describe("Field type config"),
   }),
   z.object({
     type: z.literal("rename_column"),
@@ -583,6 +593,72 @@ server.tool(
         {
           type: "text",
           text: `Column order for "${table}": ${order.join(", ")}`,
+        },
+      ],
+    };
+  }
+);
+
+// ── Column Metadata (Field Types) ────────────────────────────────────────────
+
+server.tool(
+  "set_field_type",
+  "Set the display field type for a column. This controls how the column renders in the DataBook UI (e.g. as a date picker, colored select dropdown, clickable URL, etc.). The underlying SQLite data type is unchanged.",
+  {
+    table: z.string().describe("Table name"),
+    column: z.string().describe("Column name"),
+    field_type: z
+      .enum(FIELD_TYPES)
+      .describe("Field type: text, number, select, multi_select, date, checkbox, url, email"),
+    config: z
+      .record(z.unknown())
+      .optional()
+      .describe(
+        "Type-specific config. For select/multi_select: { options: [{ value: string, color: string }] }. For number: { format: 'plain'|'currency'|'percent', decimals: number, prefix: string, suffix: string }. For date: { includeTime: boolean }."
+      ),
+  },
+  ({ table, column, field_type, config }) => {
+    manager.setColumnMetadata(table, column, field_type, config ?? {});
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Set field type for "${table}"."${column}" to "${field_type}"${config ? ` with config: ${JSON.stringify(config)}` : ""}`,
+        },
+      ],
+    };
+  }
+);
+
+server.tool(
+  "get_field_types",
+  "List all column field type metadata for a table. Shows how each column is configured to render in the DataBook UI.",
+  {
+    table: z.string().describe("Table name"),
+  },
+  ({ table }) => {
+    const metadata = manager.getAllColumnMetadata(table);
+    const keys = Object.keys(metadata);
+    if (keys.length === 0) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `No custom field types set for "${table}". All columns use default rendering based on SQLite type.`,
+          },
+        ],
+      };
+    }
+    const lines = keys.map((col) => {
+      const m = metadata[col];
+      const configStr = Object.keys(m.config).length > 0 ? ` — ${JSON.stringify(m.config)}` : "";
+      return `  • ${col}: ${m.field_type}${configStr}`;
+    });
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Field types for "${table}":\n${lines.join("\n")}`,
         },
       ],
     };

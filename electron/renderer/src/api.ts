@@ -1,6 +1,6 @@
 // Typed wrapper around the preload-exposed IPC bridge
 
-import type { QueryPage, ColumnInfo, ColumnOption } from "./data";
+import type { QueryPage, ColumnInfo, ColumnOption, ColumnMetadata, ColumnMetadataMap } from "./data";
 
 export interface ColumnDef {
   name: string;
@@ -10,6 +10,8 @@ export interface ColumnDef {
   notNull?: boolean;
   unique?: boolean;
   defaultValue?: string;
+  fieldType?: string;
+  fieldConfig?: Record<string, unknown>;
 }
 
 interface DataBookAPI {
@@ -44,6 +46,15 @@ interface DataBookAPI {
 
   getColumnOrder(table: string): Promise<string[]>;
   setColumnOrder(table: string, columns: string[]): Promise<void>;
+
+  setColumnMetadata(table: string, column: string, fieldType: string, config: Record<string, unknown>): Promise<void>;
+  getColumnMetadata(table: string, column: string): Promise<ColumnMetadata | null>;
+  getAllColumnMetadata(table?: string): Promise<ColumnMetadataMap>;
+  removeColumnMetadata(table: string, column: string): Promise<void>;
+
+  resolveRelation(targetTable: string, ids: unknown[], displayColumn: string): Promise<Record<string, string>>;
+  searchRelation(targetTable: string, displayColumn: string, searchText: string): Promise<{ id: string; display: string }[]>;
+  computeRollup(table: string, rowId: unknown, config: Record<string, unknown>): Promise<unknown>;
 }
 
 declare global {

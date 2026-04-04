@@ -75,7 +75,59 @@ export class DatabaseManager {
       );
       CREATE UNIQUE INDEX IF NOT EXISTS idx_column_order_unique
         ON column_order (database, "table", column_name);
+
+      CREATE TABLE IF NOT EXISTS column_metadata (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        database TEXT NOT NULL,
+        "table" TEXT NOT NULL,
+        "column" TEXT NOT NULL,
+        field_type TEXT NOT NULL DEFAULT 'text',
+        config TEXT NOT NULL DEFAULT '{}'
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_column_metadata_unique
+        ON column_metadata (database, "table", "column");
     `);
+
+    // Migrate existing column_options into column_metadata
+    this.migrateColumnOptionsToMetadata();
+  }
+
+  private migrateColumnOptionsToMetadata() {
+    // Find column_options entries that don't yet have a column_metadata entry
+    const optionGroups = this.metaDb
+      .prepare(
+        `SELECT DISTINCT database, "table", "column" FROM column_options
+         WHERE NOT EXISTS (
+           SELECT 1 FROM column_metadata cm
+           WHERE cm.database = column_options.database
+             AND cm."table" = column_options."table"
+             AND cm."column" = column_options."column"
+         )`
+      )
+      .all() as { database: string; table: string; column: string }[];
+
+    if (optionGroups.length === 0) return;
+
+    const getOptions = this.metaDb.prepare(
+      `SELECT value, color, sort_order FROM column_options
+       WHERE database = ? AND "table" = ? AND "column" = ?
+       ORDER BY sort_order, value`
+    );
+    const insertMeta = this.metaDb.prepare(
+      `INSERT OR IGNORE INTO column_metadata (database, "table", "column", field_type, config)
+       VALUES (?, ?, ?, 'select', ?)`
+    );
+
+    const tx = this.metaDb.transaction(() => {
+      for (const group of optionGroups) {
+        const options = getOptions.all(group.database, group.table, group.column) as ColumnOption[];
+        const config = JSON.stringify({
+          options: options.map((o) => ({ value: o.value, color: o.color, sort_order: o.sort_order })),
+        });
+        insertMeta.run(group.database, group.table, group.column, config);
+      }
+    });
+    tx();
   }
 
   private dbPath(name: string): string {
@@ -161,11 +213,12 @@ export class DatabaseManager {
 
   describeTable(table: string): Record<string, unknown>[] {
     const db = this.getDb();
-    return db.prepare(`PRAGMA table_info(${JSON.stringify(table)})`).all() as Record<string, unknown>[];
+    return db.prepare(`PRAGMA table_info("${table.replace(/"/g, '""')}")`).all() as Record<string, unknown>[];
   }
 
   createTable(table: string, columns: ColumnDef[]): void {
     const db = this.getDb();
+    const dbName = this.getCurrentDbName();
     const cols = columns
       .map((c) => {
         let def = `"${c.name}" ${c.type}`;
@@ -178,30 +231,86 @@ export class DatabaseManager {
       })
       .join(", ");
     db.exec(`CREATE TABLE IF NOT EXISTS "${table}" (${cols})`);
+
+    // Auto-create column_metadata for columns with explicit fieldType or detectable types
+    for (const c of columns) {
+      if (c.primaryKey) continue;
+      const fieldType = c.fieldType ?? this.inferFieldType(c.type);
+      if (fieldType) {
+        this.setColumnMetadata(table, c.name, fieldType, c.fieldConfig ?? {});
+      }
+    }
+  }
+
+  private inferFieldType(sqliteType: string): FieldType | null {
+    const upper = sqliteType.toUpperCase();
+    if (upper === "BOOLEAN") return "checkbox";
+    if (upper === "STATUS") return "select";
+    return null;
   }
 
   alterTable(table: string, operations: AlterOperation[]): void {
     const db = this.getDb();
+    const dbName = this.getCurrentDbName();
+    let currentTable = table;
     for (const op of operations) {
       switch (op.type) {
         case "add_column": {
           let def = `"${op.column}" ${op.columnType}`;
           if (op.notNull) def += " NOT NULL";
           if (op.defaultValue !== undefined) def += ` DEFAULT ${op.defaultValue}`;
-          db.exec(`ALTER TABLE "${table}" ADD COLUMN ${def}`);
+          db.exec(`ALTER TABLE "${currentTable}" ADD COLUMN ${def}`);
+          // Auto-create metadata if fieldType specified or detectable
+          const fieldType = op.fieldType ?? this.inferFieldType(op.columnType);
+          if (fieldType) {
+            this.setColumnMetadata(currentTable, op.column, fieldType, op.fieldConfig ?? {});
+          }
           break;
         }
         case "rename_column":
           db.exec(
-            `ALTER TABLE "${table}" RENAME COLUMN "${op.column}" TO "${op.newName}"`
+            `ALTER TABLE "${currentTable}" RENAME COLUMN "${op.column}" TO "${op.newName}"`
           );
+          // Update metadata column name
+          this.metaDb
+            .prepare(`UPDATE column_metadata SET "column" = ? WHERE database = ? AND "table" = ? AND "column" = ?`)
+            .run(op.newName, dbName, currentTable, op.column);
+          // Update column_options too (backward compat)
+          this.metaDb
+            .prepare(`UPDATE column_options SET "column" = ? WHERE database = ? AND "table" = ? AND "column" = ?`)
+            .run(op.newName, dbName, currentTable, op.column);
+          // Update column_order
+          this.metaDb
+            .prepare(`UPDATE column_order SET column_name = ? WHERE database = ? AND "table" = ? AND column_name = ?`)
+            .run(op.newName, dbName, currentTable, op.column);
           break;
         case "drop_column":
-          db.exec(`ALTER TABLE "${table}" DROP COLUMN "${op.column}"`);
+          db.exec(`ALTER TABLE "${currentTable}" DROP COLUMN "${op.column}"`);
+          // Clean up metadata
+          this.removeColumnMetadata(currentTable, op.column);
+          // Clean up column_options
+          this.metaDb
+            .prepare(`DELETE FROM column_options WHERE database = ? AND "table" = ? AND "column" = ?`)
+            .run(dbName, currentTable, op.column);
+          // Clean up column_order
+          this.metaDb
+            .prepare(`DELETE FROM column_order WHERE database = ? AND "table" = ? AND column_name = ?`)
+            .run(dbName, currentTable, op.column);
           break;
-        case "rename_table":
-          db.exec(`ALTER TABLE "${table}" RENAME TO "${op.newName}"`);
+        case "rename_table": {
+          db.exec(`ALTER TABLE "${currentTable}" RENAME TO "${op.newName}"`);
+          // Update all metadata references
+          const renameTables = [
+            `UPDATE column_metadata SET "table" = ? WHERE database = ? AND "table" = ?`,
+            `UPDATE column_options SET "table" = ? WHERE database = ? AND "table" = ?`,
+            `UPDATE column_order SET "table" = ? WHERE database = ? AND "table" = ?`,
+          ];
+          for (const sql of renameTables) {
+            this.metaDb.prepare(sql).run(op.newName, dbName, currentTable);
+          }
+          currentTable = op.newName;
           break;
+        }
         default:
           throw new Error(`Unknown alter operation: ${(op as AlterOperation).type}`);
       }
@@ -210,7 +319,12 @@ export class DatabaseManager {
 
   dropTable(table: string): void {
     const db = this.getDb();
+    const dbName = this.getCurrentDbName();
     db.exec(`DROP TABLE IF EXISTS "${table}"`);
+    // Clean up all metadata for this table
+    this.metaDb.prepare(`DELETE FROM column_metadata WHERE database = ? AND "table" = ?`).run(dbName, table);
+    this.metaDb.prepare(`DELETE FROM column_options WHERE database = ? AND "table" = ?`).run(dbName, table);
+    this.metaDb.prepare(`DELETE FROM column_order WHERE database = ? AND "table" = ?`).run(dbName, table);
   }
 
   // ── Data CRUD ────────────────────────────────────────────────────────────────
@@ -218,16 +332,49 @@ export class DatabaseManager {
   insertRows(table: string, rows: Record<string, unknown>[]): number {
     if (rows.length === 0) return 0;
     const db = this.getDb();
-    const keys = Object.keys(rows[0]);
+    const meta = this.getAllColumnMetadata(table);
+    const now = new Date().toISOString();
+
+    // Identify unique_id columns that need auto-generation
+    const uniqueIdCols = Object.entries(meta)
+      .filter(([, m]) => m.field_type === "unique_id")
+      .map(([col, m]) => ({ col, config: m.config }));
+
+    // Determine keys from first row, adding any auto-fill columns not already present
+    const autoFillCols = new Set<string>();
+    for (const [col, m] of Object.entries(meta)) {
+      if (["created_time", "created_by", "last_edited_time", "last_edited_by", "unique_id"].includes(m.field_type)) {
+        autoFillCols.add(col);
+      }
+    }
+    const sampleKeys = new Set(Object.keys(rows[0]));
+    for (const col of autoFillCols) sampleKeys.add(col);
+    const keys = Array.from(sampleKeys);
+
     const placeholders = keys.map(() => "?").join(", ");
     const cols = keys.map((k) => `"${k}"`).join(", ");
     const stmt = db.prepare(
       `INSERT INTO "${table}" (${cols}) VALUES (${placeholders})`
     );
+
     const insert = db.transaction((rows: Record<string, unknown>[]) => {
       let count = 0;
       for (const row of rows) {
-        stmt.run(keys.map((k) => row[k]));
+        const enriched = { ...row };
+        for (const [col, m] of Object.entries(meta)) {
+          if (m.field_type === "created_time" && enriched[col] == null) {
+            enriched[col] = now;
+          } else if (m.field_type === "created_by" && enriched[col] == null) {
+            enriched[col] = (m.config.defaultValue as string) ?? "Local User";
+          } else if (m.field_type === "last_edited_time") {
+            enriched[col] = now;
+          } else if (m.field_type === "last_edited_by") {
+            enriched[col] = (m.config.defaultValue as string) ?? "Local User";
+          } else if (m.field_type === "unique_id" && enriched[col] == null) {
+            enriched[col] = this.generateUniqueId(table, col, m.config);
+          }
+        }
+        stmt.run(keys.map((k) => enriched[k]));
         count++;
       }
       return count;
@@ -242,10 +389,23 @@ export class DatabaseManager {
     params: unknown[] = []
   ): number {
     const db = this.getDb();
-    const setClauses = Object.keys(set)
+    const meta = this.getAllColumnMetadata(table);
+    const now = new Date().toISOString();
+
+    // Auto-fill last_edited columns
+    const enrichedSet = { ...set };
+    for (const [col, m] of Object.entries(meta)) {
+      if (m.field_type === "last_edited_time") {
+        enrichedSet[col] = now;
+      } else if (m.field_type === "last_edited_by") {
+        enrichedSet[col] = (m.config.defaultValue as string) ?? "Local User";
+      }
+    }
+
+    const setClauses = Object.keys(enrichedSet)
       .map((k) => `"${k}" = ?`)
       .join(", ");
-    const setValues = Object.values(set);
+    const setValues = Object.values(enrichedSet);
     const stmt = db.prepare(
       `UPDATE "${table}" SET ${setClauses} WHERE ${where}`
     );
@@ -393,6 +553,8 @@ export class DatabaseManager {
          VALUES (?, ?, ?, ?, ?, ?)`
       )
       .run(dbName, table, column, value, color, maxRow.max_sort + 1);
+    // Sync to column_metadata
+    this.syncOptionsToMetadata(dbName, table, column);
   }
 
   removeColumnOption(table: string, column: string, value: string): void {
@@ -405,6 +567,8 @@ export class DatabaseManager {
     if (result.changes === 0) {
       throw new Error(`Option "${value}" not found for ${table}.${column}`);
     }
+    // Sync to column_metadata
+    this.syncOptionsToMetadata(dbName, table, column);
   }
 
   // ── Column order ────────────────────────────────────────────────────────────
@@ -433,6 +597,221 @@ export class DatabaseManager {
     tx();
   }
 
+  // ── Column Metadata (field types) ────────────────────────────────────────────
+
+  setColumnMetadata(table: string, column: string, fieldType: FieldType, config: Record<string, unknown>): void {
+    const dbName = this.getCurrentDbName();
+    const configJson = JSON.stringify(config);
+    this.metaDb
+      .prepare(
+        `INSERT INTO column_metadata (database, "table", "column", field_type, config)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(database, "table", "column") DO UPDATE SET field_type = excluded.field_type, config = excluded.config`
+      )
+      .run(dbName, table, column, fieldType, configJson);
+
+    // Sync select options to column_options table for backward compat
+    if (fieldType === "select" || fieldType === "multi_select") {
+      this.syncOptionsFromMetadata(dbName, table, column, config);
+    }
+  }
+
+  getColumnMetadata(table: string, column: string): ColumnMetadata | null {
+    const dbName = this.getCurrentDbName();
+    const row = this.metaDb
+      .prepare(
+        `SELECT "column", field_type, config FROM column_metadata
+         WHERE database = ? AND "table" = ? AND "column" = ?`
+      )
+      .get(dbName, table, column) as { column: string; field_type: string; config: string } | undefined;
+    if (!row) return null;
+    return {
+      column: row.column,
+      field_type: row.field_type as FieldType,
+      config: JSON.parse(row.config),
+    };
+  }
+
+  getAllColumnMetadata(table?: string): Record<string, ColumnMetadata> {
+    const dbName = this.getCurrentDbName();
+    let rows: { column: string; field_type: string; config: string }[];
+    if (table) {
+      rows = this.metaDb
+        .prepare(
+          `SELECT "column", field_type, config FROM column_metadata
+           WHERE database = ? AND "table" = ?`
+        )
+        .all(dbName, table) as typeof rows;
+    } else {
+      rows = this.metaDb
+        .prepare(
+          `SELECT "table" || '.' || "column" as "column", field_type, config FROM column_metadata
+           WHERE database = ?`
+        )
+        .all(dbName) as typeof rows;
+    }
+    const result: Record<string, ColumnMetadata> = {};
+    for (const row of rows) {
+      result[row.column] = {
+        column: row.column,
+        field_type: row.field_type as FieldType,
+        config: JSON.parse(row.config),
+      };
+    }
+    return result;
+  }
+
+  removeColumnMetadata(table: string, column: string): void {
+    const dbName = this.getCurrentDbName();
+    this.metaDb
+      .prepare(`DELETE FROM column_metadata WHERE database = ? AND "table" = ? AND "column" = ?`)
+      .run(dbName, table, column);
+  }
+
+  private syncOptionsToMetadata(dbName: string, table: string, column: string): void {
+    // Read current options from column_options and write to column_metadata config
+    const options = this.metaDb
+      .prepare(
+        `SELECT value, color, sort_order FROM column_options
+         WHERE database = ? AND "table" = ? AND "column" = ?
+         ORDER BY sort_order, value`
+      )
+      .all(dbName, table, column) as ColumnOption[];
+    const config = JSON.stringify({
+      options: options.map((o) => ({ value: o.value, color: o.color, sort_order: o.sort_order })),
+    });
+    // Upsert: create as 'select' if not exists, otherwise update config only
+    this.metaDb
+      .prepare(
+        `INSERT INTO column_metadata (database, "table", "column", field_type, config)
+         VALUES (?, ?, ?, 'select', ?)
+         ON CONFLICT(database, "table", "column") DO UPDATE SET config = excluded.config`
+      )
+      .run(dbName, table, column, config);
+  }
+
+  private syncOptionsFromMetadata(dbName: string, table: string, column: string, config: Record<string, unknown>): void {
+    const options = (config.options ?? []) as { value: string; color: string; sort_order?: number }[];
+    // Clear existing and rewrite
+    this.metaDb
+      .prepare(`DELETE FROM column_options WHERE database = ? AND "table" = ? AND "column" = ?`)
+      .run(dbName, table, column);
+    const insert = this.metaDb.prepare(
+      `INSERT INTO column_options (database, "table", "column", value, color, sort_order) VALUES (?, ?, ?, ?, ?, ?)`
+    );
+    const tx = this.metaDb.transaction(() => {
+      for (let i = 0; i < options.length; i++) {
+        insert.run(dbName, table, column, options[i].value, options[i].color ?? "#9B9A97", options[i].sort_order ?? i);
+      }
+    });
+    tx();
+  }
+
+  private generateUniqueId(table: string, column: string, config: Record<string, unknown>): string {
+    const db = this.getDb();
+    const prefix = (config.prefix as string) ?? "";
+    const digits = (config.digits as number) ?? 0;
+    const safeCol = column.replace(/"/g, '""');
+    const safeTable = table.replace(/"/g, '""');
+    // Get current max numeric value, filtering to rows that match the prefix
+    const row = db
+      .prepare(
+        prefix
+          ? `SELECT MAX(CAST(REPLACE("${safeCol}", ?, '') AS INTEGER)) as max_val FROM "${safeTable}" WHERE "${safeCol}" LIKE ? || '%'`
+          : `SELECT MAX(CAST("${safeCol}" AS INTEGER)) as max_val FROM "${safeTable}" WHERE typeof("${safeCol}") IN ('integer','text')`
+      )
+      .get(...(prefix ? [prefix, prefix] : [])) as { max_val: number | null } | undefined;
+    const next = (row?.max_val ?? 0) + 1;
+    if (digits > 0) {
+      return `${prefix}${String(next).padStart(digits, "0")}`;
+    }
+    return `${prefix}${next}`;
+  }
+
+  resolveRelation(targetTable: string, ids: unknown[], displayColumn: string): Record<string, string> {
+    const db = this.getDb();
+    if (ids.length === 0) return {};
+    const placeholders = ids.map(() => "?").join(", ");
+    const rows = db
+      .prepare(`SELECT rowid, "${displayColumn.replace(/"/g, '""')}" as display FROM "${targetTable.replace(/"/g, '""')}" WHERE rowid IN (${placeholders})`)
+      .all(ids) as { rowid: number; display: unknown }[];
+    const result: Record<string, string> = {};
+    for (const row of rows) {
+      result[String(row.rowid)] = row.display == null ? "" : String(row.display);
+    }
+    return result;
+  }
+
+  searchRelation(targetTable: string, displayColumn: string, searchText: string): { id: string; display: string }[] {
+    const db = this.getDb();
+    const safeCol = displayColumn.replace(/"/g, '""');
+    const safeTable = targetTable.replace(/"/g, '""');
+    const rows = db
+      .prepare(`SELECT rowid, "${safeCol}" as display FROM "${safeTable}" WHERE "${safeCol}" LIKE ? LIMIT 20`)
+      .all(`%${searchText}%`) as { rowid: number; display: unknown }[];
+    return rows.map((r) => ({ id: String(r.rowid), display: r.display == null ? String(r.rowid) : String(r.display) }));
+  }
+
+  computeRollup(table: string, rowId: unknown, config: Record<string, unknown>): unknown {
+    const db = this.getDb();
+    const relationColumn = config.relationColumn as string;
+    const targetColumn = config.targetColumn as string;
+    const aggregation = (config.aggregation as string) ?? "count";
+
+    if (!relationColumn || !targetColumn) return null;
+
+    // Get the relation metadata to find target table
+    const relationMeta = this.getColumnMetadata(table, relationColumn);
+    if (!relationMeta || relationMeta.field_type !== "relation") return null;
+    const targetTable = relationMeta.config.targetTable as string;
+    if (!targetTable) return null;
+
+    // Get relation IDs from this row
+    // Find pk column
+    const pkInfo = db.prepare(`PRAGMA table_info("${table.replace(/"/g, '""')}")`).all() as { name: string; pk: number }[];
+    const pkCol = pkInfo.find((c) => c.pk)?.name ?? "rowid";
+    const row = db.prepare(`SELECT "${relationColumn.replace(/"/g, '""')}" FROM "${table.replace(/"/g, '""')}" WHERE "${pkCol.replace(/"/g, '""')}" = ?`).get(rowId) as Record<string, unknown> | undefined;
+    if (!row) return null;
+
+    const relVal = row[relationColumn];
+    let ids: unknown[] = [];
+    if (relVal != null) {
+      try { ids = JSON.parse(String(relVal)); } catch { ids = String(relVal).split(",").map((s) => s.trim()).filter(Boolean); }
+    }
+    if (ids.length === 0) return aggregation === "count" ? 0 : null;
+
+    const placeholders = ids.map(() => "?").join(", ");
+    const safeTargetCol = targetColumn.replace(/"/g, '""');
+    const safeTargetTable = targetTable.replace(/"/g, '""');
+
+    switch (aggregation) {
+      case "count":
+        return ids.length;
+      case "sum": {
+        const r = db.prepare(`SELECT SUM("${safeTargetCol}") as val FROM "${safeTargetTable}" WHERE rowid IN (${placeholders})`).get(...ids) as { val: number } | undefined;
+        return r?.val ?? 0;
+      }
+      case "average": {
+        const r = db.prepare(`SELECT AVG("${safeTargetCol}") as val FROM "${safeTargetTable}" WHERE rowid IN (${placeholders})`).get(...ids) as { val: number } | undefined;
+        return r?.val ?? 0;
+      }
+      case "min": {
+        const r = db.prepare(`SELECT MIN("${safeTargetCol}") as val FROM "${safeTargetTable}" WHERE rowid IN (${placeholders})`).get(...ids) as { val: unknown } | undefined;
+        return r?.val ?? null;
+      }
+      case "max": {
+        const r = db.prepare(`SELECT MAX("${safeTargetCol}") as val FROM "${safeTargetTable}" WHERE rowid IN (${placeholders})`).get(...ids) as { val: unknown } | undefined;
+        return r?.val ?? null;
+      }
+      case "show_all": {
+        const rows = db.prepare(`SELECT "${safeTargetCol}" as val FROM "${safeTargetTable}" WHERE rowid IN (${placeholders})`).all(...ids) as { val: unknown }[];
+        return rows.map((r) => r.val).join(", ");
+      }
+      default:
+        return null;
+    }
+  }
+
   close() {
     this.currentDb?.close();
     this.metaDb.close();
@@ -447,6 +826,8 @@ export interface ColumnDef {
   notNull?: boolean;
   unique?: boolean;
   defaultValue?: string;
+  fieldType?: FieldType;
+  fieldConfig?: Record<string, unknown>;
 }
 
 export interface ColumnOption {
@@ -455,8 +836,16 @@ export interface ColumnOption {
   sort_order: number;
 }
 
+export type FieldType = 'text' | 'number' | 'select' | 'multi_select' | 'date' | 'checkbox' | 'url' | 'email' | 'phone' | 'status' | 'person' | 'file' | 'relation' | 'rollup' | 'created_time' | 'created_by' | 'last_edited_time' | 'last_edited_by' | 'unique_id';
+
+export interface ColumnMetadata {
+  column: string;
+  field_type: FieldType;
+  config: Record<string, unknown>;
+}
+
 export type AlterOperation =
-  | { type: "add_column"; column: string; columnType: string; notNull?: boolean; defaultValue?: string }
+  | { type: "add_column"; column: string; columnType: string; notNull?: boolean; defaultValue?: string; fieldType?: FieldType; fieldConfig?: Record<string, unknown> }
   | { type: "rename_column"; column: string; newName: string }
   | { type: "drop_column"; column: string }
   | { type: "rename_table"; newName: string };
