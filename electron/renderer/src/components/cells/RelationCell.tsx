@@ -39,12 +39,8 @@ export default function RelationCell({ value, metadata, onCommitEdit, disabled }
       setSearchResults([]);
       return;
     }
-    const safeDisplay = displayColumn.replace(/"/g, '""');
-    const safeTable = targetTable.replace(/"/g, '""');
-    api.query(`SELECT rowid, "${safeDisplay}" as display FROM "${safeTable}" WHERE "${safeDisplay}" LIKE ? LIMIT 20`, [`%${searchText}%`])
-      .then((rows) => {
-        setSearchResults(rows.map((r) => ({ id: String(r.rowid), display: String(r.display ?? r.rowid) })));
-      })
+    api.searchRelation(targetTable, displayColumn, searchText)
+      .then(setSearchResults)
       .catch(() => setSearchResults([]));
   }, [searchText, open, targetTable, displayColumn]);
 

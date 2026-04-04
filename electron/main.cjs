@@ -75,6 +75,7 @@ handle('db:getColumnMetadata', (m, table, column) => m.getColumnMetadata(table, 
 handle('db:getAllColumnMetadata', (m, table) => m.getAllColumnMetadata(table));
 handle('db:removeColumnMetadata', (m, table, column) => m.removeColumnMetadata(table, column));
 handle('db:resolveRelation', (m, targetTable, ids, displayColumn) => m.resolveRelation(targetTable, ids, displayColumn));
+handle('db:searchRelation', (m, targetTable, displayColumn, searchText) => m.searchRelation(targetTable, displayColumn, searchText));
 handle('db:computeRollup', (m, table, rowId, config) => m.computeRollup(table, rowId, config));
 
 // ── File watcher for external changes (e.g. MCP server) ─────────────────────

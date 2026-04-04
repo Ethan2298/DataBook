@@ -320,40 +320,51 @@ export class DatabaseManager {
     const meta = this.getAllColumnMetadata(table);
     const now = new Date().toISOString();
 
-    // Auto-fill columns based on field type metadata
-    const enrichedRows = rows.map((row) => {
-      const enriched = { ...row };
-      for (const [col, m] of Object.entries(meta)) {
-        if (m.field_type === "created_time" && enriched[col] == null) {
-          enriched[col] = now;
-        } else if (m.field_type === "created_by" && enriched[col] == null) {
-          enriched[col] = (m.config.defaultValue as string) ?? "Local User";
-        } else if (m.field_type === "last_edited_time") {
-          enriched[col] = now;
-        } else if (m.field_type === "last_edited_by") {
-          enriched[col] = (m.config.defaultValue as string) ?? "Local User";
-        } else if (m.field_type === "unique_id" && enriched[col] == null) {
-          enriched[col] = this.generateUniqueId(table, col, m.config);
-        }
-      }
-      return enriched;
-    });
+    // Identify unique_id columns that need auto-generation
+    const uniqueIdCols = Object.entries(meta)
+      .filter(([, m]) => m.field_type === "unique_id")
+      .map(([col, m]) => ({ col, config: m.config }));
 
-    const keys = Object.keys(enrichedRows[0]);
+    // Determine keys from first row, adding any auto-fill columns not already present
+    const autoFillCols = new Set<string>();
+    for (const [col, m] of Object.entries(meta)) {
+      if (["created_time", "created_by", "last_edited_time", "last_edited_by", "unique_id"].includes(m.field_type)) {
+        autoFillCols.add(col);
+      }
+    }
+    const sampleKeys = new Set(Object.keys(rows[0]));
+    for (const col of autoFillCols) sampleKeys.add(col);
+    const keys = Array.from(sampleKeys);
+
     const placeholders = keys.map(() => "?").join(", ");
     const cols = keys.map((k) => `"${k}"`).join(", ");
     const stmt = db.prepare(
       `INSERT INTO "${table}" (${cols}) VALUES (${placeholders})`
     );
+
     const insert = db.transaction((rows: Record<string, unknown>[]) => {
       let count = 0;
       for (const row of rows) {
-        stmt.run(keys.map((k) => row[k]));
+        const enriched = { ...row };
+        for (const [col, m] of Object.entries(meta)) {
+          if (m.field_type === "created_time" && enriched[col] == null) {
+            enriched[col] = now;
+          } else if (m.field_type === "created_by" && enriched[col] == null) {
+            enriched[col] = (m.config.defaultValue as string) ?? "Local User";
+          } else if (m.field_type === "last_edited_time") {
+            enriched[col] = now;
+          } else if (m.field_type === "last_edited_by") {
+            enriched[col] = (m.config.defaultValue as string) ?? "Local User";
+          } else if (m.field_type === "unique_id" && enriched[col] == null) {
+            enriched[col] = this.generateUniqueId(table, col, m.config);
+          }
+        }
+        stmt.run(keys.map((k) => enriched[k]));
         count++;
       }
       return count;
     });
-    return insert(enrichedRows) as number;
+    return insert(rows) as number;
   }
 
   updateRows(
@@ -683,10 +694,16 @@ export class DatabaseManager {
     const db = this.getDb();
     const prefix = (config.prefix as string) ?? "";
     const digits = (config.digits as number) ?? 0;
-    // Get current max numeric value
+    const safeCol = column.replace(/"/g, '""');
+    const safeTable = table.replace(/"/g, '""');
+    // Get current max numeric value, filtering to rows that match the prefix
     const row = db
-      .prepare(`SELECT MAX(CAST(REPLACE("${column.replace(/"/g, '""')}", ?, '') AS INTEGER)) as max_val FROM "${table.replace(/"/g, '""')}"`)
-      .get(prefix) as { max_val: number | null } | undefined;
+      .prepare(
+        prefix
+          ? `SELECT MAX(CAST(REPLACE("${safeCol}", ?, '') AS INTEGER)) as max_val FROM "${safeTable}" WHERE "${safeCol}" LIKE ? || '%'`
+          : `SELECT MAX(CAST("${safeCol}" AS INTEGER)) as max_val FROM "${safeTable}" WHERE typeof("${safeCol}") IN ('integer','text')`
+      )
+      .get(...(prefix ? [prefix, prefix] : [])) as { max_val: number | null } | undefined;
     const next = (row?.max_val ?? 0) + 1;
     if (digits > 0) {
       return `${prefix}${String(next).padStart(digits, "0")}`;
@@ -706,6 +723,16 @@ export class DatabaseManager {
       result[String(row.rowid)] = row.display == null ? "" : String(row.display);
     }
     return result;
+  }
+
+  searchRelation(targetTable: string, displayColumn: string, searchText: string): { id: string; display: string }[] {
+    const db = this.getDb();
+    const safeCol = displayColumn.replace(/"/g, '""');
+    const safeTable = targetTable.replace(/"/g, '""');
+    const rows = db
+      .prepare(`SELECT rowid, "${safeCol}" as display FROM "${safeTable}" WHERE "${safeCol}" LIKE ? LIMIT 20`)
+      .all(`%${searchText}%`) as { rowid: number; display: unknown }[];
+    return rows.map((r) => ({ id: String(r.rowid), display: r.display == null ? String(r.rowid) : String(r.display) }));
   }
 
   computeRollup(table: string, rowId: unknown, config: Record<string, unknown>): unknown {

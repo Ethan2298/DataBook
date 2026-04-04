@@ -54,5 +54,6 @@ contextBridge.exposeInMainWorld('databook', {
 
   // Relation / Rollup
   resolveRelation: (targetTable, ids, displayColumn) => ipcRenderer.invoke('db:resolveRelation', targetTable, ids, displayColumn),
+  searchRelation: (targetTable, displayColumn, searchText) => ipcRenderer.invoke('db:searchRelation', targetTable, displayColumn, searchText),
   computeRollup: (table, rowId, config) => ipcRenderer.invoke('db:computeRollup', table, rowId, config),
 });

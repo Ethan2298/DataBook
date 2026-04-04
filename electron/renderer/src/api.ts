@@ -53,6 +53,7 @@ interface DataBookAPI {
   removeColumnMetadata(table: string, column: string): Promise<void>;
 
   resolveRelation(targetTable: string, ids: unknown[], displayColumn: string): Promise<Record<string, string>>;
+  searchRelation(targetTable: string, displayColumn: string, searchText: string): Promise<{ id: string; display: string }[]>;
   computeRollup(table: string, rowId: unknown, config: Record<string, unknown>): Promise<unknown>;
 }
 
