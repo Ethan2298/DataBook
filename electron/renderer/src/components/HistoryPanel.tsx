@@ -10,9 +10,9 @@ interface HistoryPanelProps {
 
 // VS Code-style action icons & colors
 const ACTION_META: Record<string, { icon: string; label: string; color: string }> = {
-  insert: { icon: "M", label: "Added row", color: "#73c991" },    // green like VS Code "M" added
-  update: { icon: "M", label: "Modified row", color: "#e2c08d" },  // yellow like VS Code modified
-  delete: { icon: "D", label: "Deleted row", color: "#c74e39" },   // red like VS Code deleted
+  insert: { icon: "M", label: "Added row", color: "#73c991" },
+  update: { icon: "M", label: "Modified row", color: "#e2c08d" },
+  delete: { icon: "D", label: "Deleted row", color: "#c74e39" },
 };
 
 function formatTimestamp(iso: string): string {
@@ -20,9 +20,18 @@ function formatTimestamp(iso: string): string {
   const now = new Date();
   const diff = now.getTime() - d.getTime();
   if (diff < 60_000) return "just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} min. ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} hr. ago`;
-  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)} days ago`;
+  if (diff < 3_600_000) {
+    const mins = Math.floor(diff / 60_000);
+    return `${mins} min${mins === 1 ? "" : "s"} ago`;
+  }
+  if (diff < 86_400_000) {
+    const hrs = Math.floor(diff / 3_600_000);
+    return `${hrs} hr${hrs === 1 ? "" : "s"} ago`;
+  }
+  if (diff < 604_800_000) {
+    const days = Math.floor(diff / 86_400_000);
+    return `${days} day${days === 1 ? "" : "s"} ago`;
+  }
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
@@ -39,7 +48,6 @@ function getDateGroup(iso: string): string {
 }
 
 function shortId(id: number): string {
-  // Git-style short hash feel
   return String(id).padStart(7, "0");
 }
 
@@ -77,43 +85,41 @@ function DiffBlock({ entry, expanded }: { entry: RowHistoryEntry; expanded: bool
   }
 
   if (entry.action === "update" && entry.old_data && entry.new_data) {
-    const allKeys = new Set([...Object.keys(entry.old_data), ...Object.keys(entry.new_data)]);
-    const changed: string[] = [];
-    const unchanged: string[] = [];
-    for (const k of allKeys) {
-      if (JSON.stringify(entry.old_data[k]) !== JSON.stringify(entry.new_data[k])) {
-        changed.push(k);
-      } else {
-        unchanged.push(k);
-      }
-    }
-
+    // Show fields in natural column order, changes inline
+    const allKeys = Object.keys(entry.new_data);
     return (
       <div className="ht-diff">
-        {unchanged.map((k) => (
-          <div key={k} className="ht-diff-line ht-diff-ctx">
-            <span className="ht-diff-sign"> </span>
-            <span className="ht-diff-key">{k}</span>
-            <span className="ht-diff-sep">: </span>
-            <span className="ht-diff-val">{formatVal(entry.old_data![k])}</span>
-          </div>
-        ))}
-        {changed.map((k) => (
-          <div key={k} className="ht-diff-change">
-            <div className="ht-diff-line ht-diff-del">
-              <span className="ht-diff-sign">-</span>
-              <span className="ht-diff-key">{k}</span>
-              <span className="ht-diff-sep">: </span>
-              <span className="ht-diff-val">{formatVal(entry.old_data![k])}</span>
+        {allKeys.map((k) => {
+          const oldVal = entry.old_data![k];
+          const newVal = entry.new_data![k];
+          const changed = JSON.stringify(oldVal) !== JSON.stringify(newVal);
+          if (!changed) {
+            return (
+              <div key={k} className="ht-diff-line ht-diff-ctx">
+                <span className="ht-diff-sign"> </span>
+                <span className="ht-diff-key">{k}</span>
+                <span className="ht-diff-sep">: </span>
+                <span className="ht-diff-val">{formatVal(oldVal)}</span>
+              </div>
+            );
+          }
+          return (
+            <div key={k} className="ht-diff-change">
+              <div className="ht-diff-line ht-diff-del">
+                <span className="ht-diff-sign">-</span>
+                <span className="ht-diff-key">{k}</span>
+                <span className="ht-diff-sep">: </span>
+                <span className="ht-diff-val">{formatVal(oldVal)}</span>
+              </div>
+              <div className="ht-diff-line ht-diff-add">
+                <span className="ht-diff-sign">+</span>
+                <span className="ht-diff-key">{k}</span>
+                <span className="ht-diff-sep">: </span>
+                <span className="ht-diff-val">{formatVal(newVal)}</span>
+              </div>
             </div>
-            <div className="ht-diff-line ht-diff-add">
-              <span className="ht-diff-sign">+</span>
-              <span className="ht-diff-key">{k}</span>
-              <span className="ht-diff-sep">: </span>
-              <span className="ht-diff-val">{formatVal(entry.new_data![k])}</span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   }
@@ -130,22 +136,29 @@ function formatVal(v: unknown): string {
 export default function HistoryPanel({ tableName, onClose, onRevert }: HistoryPanelProps) {
   const [entries, setEntries] = useState<RowHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [reverting, setReverting] = useState<number | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
   const loadHistory = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const result = await api.getTableHistory(tableName, 200, 0);
       setEntries(result);
     } catch (err) {
-      console.error("Failed to load history:", err);
+      setEntries([]);
+      setError(String(err));
     } finally {
       setLoading(false);
     }
   }, [tableName]);
 
-  useEffect(() => { loadHistory(); }, [loadHistory]);
+  // Reset expanded state and reload when table changes
+  useEffect(() => {
+    setExpandedIds(new Set());
+    loadHistory();
+  }, [loadHistory]);
 
   const toggleExpand = (id: number) => {
     setExpandedIds((prev) => {
@@ -157,13 +170,14 @@ export default function HistoryPanel({ tableName, onClose, onRevert }: HistoryPa
   };
 
   const handleRevert = async (id: number) => {
+    if (reverting !== null) return; // Block concurrent reverts
     setReverting(id);
     try {
-      await api.revertChange(id);
+      const result = await api.revertChange(id);
       onRevert();
       await loadHistory();
     } catch (err) {
-      console.error("Revert failed:", err);
+      setError(`Revert failed: ${err}`);
     } finally {
       setReverting(null);
     }
@@ -187,7 +201,7 @@ export default function HistoryPanel({ tableName, onClose, onRevert }: HistoryPa
 
   return (
     <div className="ht-panel">
-      {/* Header — VS Code style section title bar */}
+      {/* Header */}
       <div className="ht-header">
         <div className="ht-header-title">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -213,7 +227,10 @@ export default function HistoryPanel({ tableName, onClose, onRevert }: HistoryPa
       {/* Body */}
       <div className="ht-body">
         {loading && <div className="ht-empty">Loading history...</div>}
-        {!loading && entries.length === 0 && (
+        {!loading && error && (
+          <div className="ht-error">{error}</div>
+        )}
+        {!loading && !error && entries.length === 0 && (
           <div className="ht-empty">
             <svg width="24" height="24" viewBox="0 0 16 16" fill="#555" style={{ marginBottom: 8 }}>
               <path d="M11.93 8.5a4.002 4.002 0 0 1-7.86 0H.75a.75.75 0 0 1 0-1.5h3.32a4.002 4.002 0 0 1 7.86 0h3.32a.75.75 0 0 1 0 1.5h-3.32zM8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"/>
@@ -221,7 +238,7 @@ export default function HistoryPanel({ tableName, onClose, onRevert }: HistoryPa
             No changes recorded yet
           </div>
         )}
-        {!loading && grouped.map((group) => (
+        {!loading && !error && grouped.map((group) => (
           <div key={group.label} className="ht-group">
             <div className="ht-group-label">{group.label}</div>
             <div className="ht-timeline">
@@ -244,11 +261,11 @@ export default function HistoryPanel({ tableName, onClose, onRevert }: HistoryPa
                         <span className="ht-label" style={{ color: meta.color }}>{meta.label}</span>
                         <span className="ht-pk">#{entry.row_pk ?? "?"}</span>
                         <span className="ht-time">{formatTimestamp(entry.created_at)}</span>
-                        {/* Revert action — VS Code discard icon */}
+                        {/* Revert action */}
                         <button
                           className="ht-revert-icon"
                           onClick={(e) => { e.stopPropagation(); handleRevert(entry.id); }}
-                          disabled={reverting === entry.id}
+                          disabled={reverting !== null}
                           title="Revert this change"
                         >
                           {reverting === entry.id ? (

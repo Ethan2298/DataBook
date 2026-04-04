@@ -109,6 +109,8 @@ export class DatabaseManager {
       );
       CREATE INDEX IF NOT EXISTS idx_row_history_lookup
         ON row_history (database, "table", created_at);
+      CREATE INDEX IF NOT EXISTS idx_row_history_row
+        ON row_history (database, "table", row_pk);
     `);
 
     // Migrate existing column_options into column_metadata
@@ -414,6 +416,9 @@ export class DatabaseManager {
     );
 
     const pkCol = this.getPkColumn(table);
+    // Collect history entries to write AFTER the transaction commits,
+    // so a rollback doesn't leave orphaned history records in metaDb.
+    const historyQueue: { pk: string; data: Record<string, unknown> }[] = [];
     const insert = db.transaction((rows: Record<string, unknown>[]) => {
       let count = 0;
       for (const row of rows) {
@@ -433,12 +438,17 @@ export class DatabaseManager {
         }
         const result = stmt.run(keys.map((k) => enriched[k]));
         const pkValue = enriched[pkCol] ?? String(result.lastInsertRowid);
-        this.recordHistory(table, String(pkValue), "insert", null, enriched);
+        historyQueue.push({ pk: String(pkValue), data: { ...enriched } });
         count++;
       }
       return count;
     });
-    return insert(rows) as number;
+    const count = insert(rows) as number;
+    // Record history only after the transaction has committed successfully
+    for (const h of historyQueue) {
+      this.recordHistory(table, h.pk, "insert", null, h.data);
+    }
+    return count;
   }
 
   updateRows(
@@ -463,8 +473,10 @@ export class DatabaseManager {
 
     // Snapshot rows before update for history
     const pkCol = this.getPkColumn(table);
+    const usesRowid = pkCol === "rowid";
+    const selectPrefix = usesRowid ? "SELECT rowid, *" : "SELECT *";
     const beforeRows = db
-      .prepare(`SELECT *, "${pkCol.replace(/"/g, '""')}" as __pk FROM "${table}" WHERE ${where}`)
+      .prepare(`${selectPrefix} FROM "${table}" WHERE ${where}`)
       .all(params) as Record<string, unknown>[];
 
     const setClauses = Object.keys(enrichedSet)
@@ -477,14 +489,19 @@ export class DatabaseManager {
     const result = stmt.run([...setValues, ...params]);
 
     // Snapshot rows after update and record history
+    const safePk = pkCol.replace(/"/g, '""');
     for (const before of beforeRows) {
-      const pk = String(before.__pk ?? before[pkCol]);
-      delete before.__pk;
-      const safePk = pkCol.replace(/"/g, '""');
+      const pk = String(before[pkCol]);
+      // Remove rowid from snapshot if it was injected for PK tracking
+      const snapshot = usesRowid ? (({ rowid, ...rest }) => rest)(before) : before;
       const after = db
-        .prepare(`SELECT * FROM "${table}" WHERE "${safePk}" = ?`)
+        .prepare(`${selectPrefix} FROM "${table}" WHERE "${safePk}" = ?`)
         .get(pk) as Record<string, unknown> | undefined;
-      this.recordHistory(table, pk, "update", before, after ?? null);
+      let afterSnapshot = after ?? null;
+      if (after && usesRowid) {
+        afterSnapshot = (({ rowid, ...rest }) => rest)(after);
+      }
+      this.recordHistory(table, pk, "update", snapshot, afterSnapshot);
     }
 
     return result.changes;
@@ -493,18 +510,21 @@ export class DatabaseManager {
   deleteRows(table: string, where: string, params: unknown[] = []): number {
     const db = this.getDb();
     const pkCol = this.getPkColumn(table);
+    const usesRowid = pkCol === "rowid";
+    const selectPrefix = usesRowid ? "SELECT rowid, *" : "SELECT *";
 
     // Snapshot rows before deletion for history
     const beforeRows = db
-      .prepare(`SELECT * FROM "${table}" WHERE ${where}`)
+      .prepare(`${selectPrefix} FROM "${table}" WHERE ${where}`)
       .all(params) as Record<string, unknown>[];
 
     const stmt = db.prepare(`DELETE FROM "${table}" WHERE ${where}`);
     const result = stmt.run(params);
 
     for (const before of beforeRows) {
-      const pk = String(before[pkCol] ?? "");
-      this.recordHistory(table, pk, "delete", before, null);
+      const pk = String(before[pkCol]);
+      const snapshot = usesRowid ? (({ rowid, ...rest }) => rest)(before) : before;
+      this.recordHistory(table, pk, "delete", snapshot, null);
     }
 
     return result.changes;
@@ -1057,6 +1077,12 @@ interface RawHistoryRow {
   created_at: string;
 }
 
+function safeJsonParse(s: string | null): Record<string, unknown> | null {
+  if (!s) return null;
+  try { return JSON.parse(s); }
+  catch { return null; }
+}
+
 function parseHistoryRow(row: RawHistoryRow): RowHistoryEntry {
   return {
     id: row.id,
@@ -1064,8 +1090,8 @@ function parseHistoryRow(row: RawHistoryRow): RowHistoryEntry {
     table: row.tbl,
     row_pk: row.row_pk,
     action: row.action as RowHistoryEntry["action"],
-    old_data: row.old_data ? JSON.parse(row.old_data) : null,
-    new_data: row.new_data ? JSON.parse(row.new_data) : null,
+    old_data: safeJsonParse(row.old_data),
+    new_data: safeJsonParse(row.new_data),
     created_at: row.created_at,
   };
 }

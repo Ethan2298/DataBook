@@ -2051,6 +2051,14 @@ input[type="number"].cell-edit-input::-webkit-outer-spin-button {
   font-size: 12px;
 }
 
+.ht-error {
+  padding: 10px 14px;
+  color: #f48771;
+  font-size: 12px;
+  background: rgba(244, 135, 113, 0.1);
+  border-bottom: 1px solid #2d2d2d;
+}
+
 /* Date group labels */
 .ht-group-label {
   position: sticky;
