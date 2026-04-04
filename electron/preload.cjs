@@ -60,4 +60,9 @@ contextBridge.exposeInMainWorld('databook', {
   // View Filter/Sort
   getViewFilterSort: (itemName, itemKind, viewType) => ipcRenderer.invoke('db:getViewFilterSort', itemName, itemKind, viewType),
   setViewFilterSort: (itemName, itemKind, viewType, config) => ipcRenderer.invoke('db:setViewFilterSort', itemName, itemKind, viewType, config),
+
+  // Row History
+  getTableHistory: (table, limit, offset) => ipcRenderer.invoke('db:getTableHistory', table, limit, offset),
+  getRowHistory: (table, rowPk) => ipcRenderer.invoke('db:getRowHistory', table, rowPk),
+  revertChange: (historyId) => ipcRenderer.invoke('db:revertChange', historyId),
 });

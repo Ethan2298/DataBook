@@ -91,3 +91,16 @@ export interface ViewFilterSort {
 }
 
 export type ColumnCategory = "text" | "number" | "boolean" | "status" | "date";
+
+// ── Row History types ────────────────────────────────────────────────────
+
+export interface RowHistoryEntry {
+  id: number;
+  database: string;
+  table: string;
+  row_pk: string | null;
+  action: "insert" | "update" | "delete";
+  old_data: Record<string, unknown> | null;
+  new_data: Record<string, unknown> | null;
+  created_at: string;
+}

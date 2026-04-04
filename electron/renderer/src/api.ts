@@ -1,6 +1,6 @@
 // Typed wrapper around the preload-exposed IPC bridge
 
-import type { QueryPage, ColumnInfo, ColumnOption, ColumnMetadata, ColumnMetadataMap, ViewFilterSort } from "./data";
+import type { QueryPage, ColumnInfo, ColumnOption, ColumnMetadata, ColumnMetadataMap, ViewFilterSort, RowHistoryEntry } from "./data";
 
 export interface ColumnDef {
   name: string;
@@ -58,6 +58,10 @@ interface DataBookAPI {
 
   getViewFilterSort(itemName: string, itemKind: string, viewType: string): Promise<ViewFilterSort | null>;
   setViewFilterSort(itemName: string, itemKind: string, viewType: string, config: ViewFilterSort): Promise<void>;
+
+  getTableHistory(table: string, limit?: number, offset?: number): Promise<RowHistoryEntry[]>;
+  getRowHistory(table: string, rowPk: string): Promise<RowHistoryEntry[]>;
+  revertChange(historyId: number): Promise<{ action: string; detail: string }>;
 }
 
 declare global {

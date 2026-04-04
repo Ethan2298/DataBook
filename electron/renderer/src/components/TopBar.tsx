@@ -6,6 +6,8 @@ interface TopBarProps {
   onViewChange: (view: ViewType) => void;
   onCreateQueryPage: (name: string, sql: string, viewType: string) => void;
   onRefresh: () => void;
+  historyOpen?: boolean;
+  onToggleHistory?: () => void;
 }
 
 const VIEW_OPTIONS: { type: ViewType; label: string; icon: JSX.Element }[] = [
@@ -47,7 +49,7 @@ const VIEW_OPTIONS: { type: ViewType; label: string; icon: JSX.Element }[] = [
   },
 ];
 
-export default function TopBar({ activeItem, onViewChange, onCreateQueryPage, onRefresh }: TopBarProps) {
+export default function TopBar({ activeItem, onViewChange, onCreateQueryPage, onRefresh, historyOpen, onToggleHistory }: TopBarProps) {
   const [showSaveInput, setShowSaveInput] = useState(false);
   const [saveName, setSaveName] = useState("");
 
@@ -77,6 +79,15 @@ export default function TopBar({ activeItem, onViewChange, onCreateQueryPage, on
         ))}
       </div>
       <div className="topbar-right">
+        {onToggleHistory && (
+          <button className={`action-btn ${historyOpen ? "active" : ""}`} onClick={onToggleHistory} title="Row history">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+            History
+          </button>
+        )}
         <button className="action-btn" onClick={onRefresh} title="Refresh">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 2v6h-6" />

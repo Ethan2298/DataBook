@@ -8,6 +8,7 @@ import CalendarView from "./components/CalendarView";
 import EmptyState from "./components/EmptyState";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ColumnPicker from "./components/ColumnPicker";
+import HistoryPanel from "./components/HistoryPanel";
 import api from "./api";
 import { applyFilterSort } from "./filter-sort";
 import type { QueryPage, Row, ViewType, ViewConfig, ActiveItem, ColumnInfo, ColumnOptionsMap, ColumnMetadataMap, FilterGroup, SortRule } from "./data";
@@ -31,6 +32,9 @@ export default function App() {
   // Filter & sort state
   const [filters, setFilters] = useState<FilterGroup>({ conjunction: "and", rules: [] });
   const [sorts, setSorts] = useState<SortRule[]>([]);
+
+  // History panel
+  const [showHistory, setShowHistory] = useState(false);
 
   // Computed filtered/sorted rows
   const filteredRows = useMemo(
@@ -610,6 +614,8 @@ export default function App() {
               onViewChange={changeView}
               onCreateQueryPage={createQueryPage}
               onRefresh={refresh}
+              historyOpen={showHistory}
+              onToggleHistory={() => setShowHistory((v) => !v)}
             />
             <FilterSortBar
               columns={columns}
@@ -653,6 +659,8 @@ export default function App() {
                 />
               </div>
             )}
+            <div className="content-with-history">
+              <div className="content-main">
             {activeItem.viewType === "table" && (
               <TableView
                 rows={filteredRows}
@@ -703,6 +711,15 @@ export default function App() {
                 />
               );
             })()}
+              </div>
+              {showHistory && (
+                <HistoryPanel
+                  tableName={activeItem.kind === "table" ? activeItem.name : (activeItem.sql.match(/FROM\s+["']?(\w+)["']?/i)?.[1] ?? activeItem.name)}
+                  onClose={() => setShowHistory(false)}
+                  onRevert={refresh}
+                />
+              )}
+            </div>
           </>
         ) : (
           <EmptyState

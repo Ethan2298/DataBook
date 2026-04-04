@@ -665,6 +665,65 @@ server.tool(
   }
 );
 
+// ── Row History ─────────────────────────────────────────────────────────────
+
+server.tool(
+  "get_table_history",
+  "Show the change history for a table. Returns a list of row-level changes (insert, update, delete) in reverse chronological order, like `git log`.",
+  {
+    table: z.string().describe("Table name"),
+    limit: z.number().optional().default(50).describe("Max entries to return (default 50)"),
+    offset: z.number().optional().default(0).describe("Offset for pagination"),
+  },
+  ({ table, limit, offset }) => {
+    const entries = manager.getTableHistory(table, limit, offset);
+    if (entries.length === 0) {
+      return { content: [{ type: "text", text: `No history for table "${table}".` }] };
+    }
+    const lines = entries.map((e) => {
+      const data = e.action === "delete" ? JSON.stringify(e.old_data) : JSON.stringify(e.new_data);
+      return `  #${e.id} [${e.action}] row ${e.row_pk ?? "?"} @ ${e.created_at}\n    ${data}`;
+    });
+    return { content: [{ type: "text", text: `History for "${table}" (${entries.length} entries):\n${lines.join("\n")}` }] };
+  }
+);
+
+server.tool(
+  "get_row_history",
+  "Show the full change history for a specific row, identified by its primary key value. Like `git log` for a single file.",
+  {
+    table: z.string().describe("Table name"),
+    row_pk: z.string().describe("Primary key value of the row"),
+  },
+  ({ table, row_pk }) => {
+    const entries = manager.getRowHistory(table, row_pk);
+    if (entries.length === 0) {
+      return { content: [{ type: "text", text: `No history for row "${row_pk}" in "${table}".` }] };
+    }
+    const lines = entries.map((e) => {
+      const summary = e.action === "update"
+        ? `old: ${JSON.stringify(e.old_data)}\n    new: ${JSON.stringify(e.new_data)}`
+        : e.action === "delete"
+        ? JSON.stringify(e.old_data)
+        : JSON.stringify(e.new_data);
+      return `  #${e.id} [${e.action}] @ ${e.created_at}\n    ${summary}`;
+    });
+    return { content: [{ type: "text", text: `History for row "${row_pk}" in "${table}" (${entries.length} entries):\n${lines.join("\n")}` }] };
+  }
+);
+
+server.tool(
+  "revert_change",
+  "Revert a specific change by its history ID, like `git revert`. Undoes the effect of that change: deletes an inserted row, restores an updated row to its previous state, or re-inserts a deleted row.",
+  {
+    history_id: z.number().describe("The history entry ID to revert (from get_table_history or get_row_history)"),
+  },
+  ({ history_id }) => {
+    const result = manager.revertChange(history_id);
+    return { content: [{ type: "text", text: result.detail }] };
+  }
+);
+
 // ── Start server ─────────────────────────────────────────────────────────────
 
 async function main() {

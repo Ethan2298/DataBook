@@ -82,6 +82,11 @@ handle('db:computeRollup', (m, table, rowId, config) => m.computeRollup(table, r
 handle('db:getViewFilterSort', (m, itemName, itemKind, viewType) => m.getViewFilterSort(itemName, itemKind, viewType));
 handle('db:setViewFilterSort', (m, itemName, itemKind, viewType, config) => m.setViewFilterSort(itemName, itemKind, viewType, config));
 
+// ── Row History ────────────────────────────────────────────────────────────
+handle('db:getTableHistory', (m, table, limit, offset) => m.getTableHistory(table, limit ?? 50, offset ?? 0));
+handle('db:getRowHistory', (m, table, rowPk) => m.getRowHistory(table, rowPk));
+handle('db:revertChange', (m, historyId) => m.revertChange(historyId));
+
 // ── File watcher for external changes (e.g. MCP server) ─────────────────────
 
 let mainWindow = null;

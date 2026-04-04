@@ -1927,3 +1927,184 @@ input[type="number"].cell-edit-input::-webkit-outer-spin-button {
 .active-pill-close:hover {
   color: #E03E3E;
 }
+
+/* ── History Panel ── */
+
+.content-with-history {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.content-main {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+
+.history-panel {
+  width: 320px;
+  flex-shrink: 0;
+  background: #111;
+  border-left: 1.5px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.history-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #E8E8E3;
+}
+
+.history-close {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.history-close:hover {
+  color: #E8E8E3;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.history-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.history-empty {
+  padding: 32px 14px;
+  text-align: center;
+  color: #666;
+  font-size: 12px;
+}
+
+.history-entry {
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.history-entry:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.history-entry-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.history-action-badge {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: #fff;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.history-pk {
+  font-size: 11px;
+  color: #9B9A97;
+  font-family: 'SF Mono', 'Menlo', monospace;
+}
+
+.history-time {
+  font-size: 11px;
+  color: #666;
+  margin-left: auto;
+}
+
+.history-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+
+.history-field {
+  font-size: 11px;
+  color: #9B9A97;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.history-field-name {
+  color: #777;
+  flex-shrink: 0;
+}
+
+.history-field-value {
+  color: #E8E8E3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-field-old {
+  color: #E03E3E;
+  text-decoration: line-through;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-arrow {
+  color: #555;
+  flex-shrink: 0;
+}
+
+.history-field-more {
+  font-size: 10px;
+  color: #555;
+}
+
+.history-revert-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #9B9A97;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.history-revert-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #E8E8E3;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.history-revert-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.action-btn.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #E8E8E3;
+}

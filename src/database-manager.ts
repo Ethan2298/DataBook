@@ -96,6 +96,19 @@ export class DatabaseManager {
         config TEXT NOT NULL DEFAULT '{}',
         UNIQUE(database, item_name, item_kind, view_type)
       );
+
+      CREATE TABLE IF NOT EXISTS row_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        database TEXT NOT NULL,
+        "table" TEXT NOT NULL,
+        row_pk TEXT,
+        action TEXT NOT NULL,
+        old_data TEXT,
+        new_data TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_row_history_lookup
+        ON row_history (database, "table", created_at);
     `);
 
     // Migrate existing column_options into column_metadata
@@ -337,6 +350,39 @@ export class DatabaseManager {
     this.metaDb.prepare(`DELETE FROM column_order WHERE database = ? AND "table" = ?`).run(dbName, table);
   }
 
+  // ── Row History helpers ──────────────────────────────────────────────────────
+
+  private getPkColumn(table: string): string {
+    const db = this.getDb();
+    const cols = db.prepare(`PRAGMA table_info("${table.replace(/"/g, '""')}")`).all() as { name: string; pk: number }[];
+    const pk = cols.find((c) => c.pk === 1);
+    return pk ? pk.name : "rowid";
+  }
+
+  private recordHistory(
+    table: string,
+    rowPk: string | null,
+    action: "insert" | "update" | "delete",
+    oldData: Record<string, unknown> | null,
+    newData: Record<string, unknown> | null
+  ): void {
+    const dbName = this.getCurrentDbName();
+    this.metaDb
+      .prepare(
+        `INSERT INTO row_history (database, "table", row_pk, action, old_data, new_data, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        dbName,
+        table,
+        rowPk,
+        action,
+        oldData ? JSON.stringify(oldData) : null,
+        newData ? JSON.stringify(newData) : null,
+        new Date().toISOString()
+      );
+  }
+
   // ── Data CRUD ────────────────────────────────────────────────────────────────
 
   insertRows(table: string, rows: Record<string, unknown>[]): number {
@@ -367,6 +413,7 @@ export class DatabaseManager {
       `INSERT INTO "${table}" (${cols}) VALUES (${placeholders})`
     );
 
+    const pkCol = this.getPkColumn(table);
     const insert = db.transaction((rows: Record<string, unknown>[]) => {
       let count = 0;
       for (const row of rows) {
@@ -384,7 +431,9 @@ export class DatabaseManager {
             enriched[col] = this.generateUniqueId(table, col, m.config);
           }
         }
-        stmt.run(keys.map((k) => enriched[k]));
+        const result = stmt.run(keys.map((k) => enriched[k]));
+        const pkValue = enriched[pkCol] ?? String(result.lastInsertRowid);
+        this.recordHistory(table, String(pkValue), "insert", null, enriched);
         count++;
       }
       return count;
@@ -412,6 +461,12 @@ export class DatabaseManager {
       }
     }
 
+    // Snapshot rows before update for history
+    const pkCol = this.getPkColumn(table);
+    const beforeRows = db
+      .prepare(`SELECT *, "${pkCol.replace(/"/g, '""')}" as __pk FROM "${table}" WHERE ${where}`)
+      .all(params) as Record<string, unknown>[];
+
     const setClauses = Object.keys(enrichedSet)
       .map((k) => `"${k}" = ?`)
       .join(", ");
@@ -420,13 +475,38 @@ export class DatabaseManager {
       `UPDATE "${table}" SET ${setClauses} WHERE ${where}`
     );
     const result = stmt.run([...setValues, ...params]);
+
+    // Snapshot rows after update and record history
+    for (const before of beforeRows) {
+      const pk = String(before.__pk ?? before[pkCol]);
+      delete before.__pk;
+      const safePk = pkCol.replace(/"/g, '""');
+      const after = db
+        .prepare(`SELECT * FROM "${table}" WHERE "${safePk}" = ?`)
+        .get(pk) as Record<string, unknown> | undefined;
+      this.recordHistory(table, pk, "update", before, after ?? null);
+    }
+
     return result.changes;
   }
 
   deleteRows(table: string, where: string, params: unknown[] = []): number {
     const db = this.getDb();
+    const pkCol = this.getPkColumn(table);
+
+    // Snapshot rows before deletion for history
+    const beforeRows = db
+      .prepare(`SELECT * FROM "${table}" WHERE ${where}`)
+      .all(params) as Record<string, unknown>[];
+
     const stmt = db.prepare(`DELETE FROM "${table}" WHERE ${where}`);
     const result = stmt.run(params);
+
+    for (const before of beforeRows) {
+      const pk = String(before[pkCol] ?? "");
+      this.recordHistory(table, pk, "delete", before, null);
+    }
+
     return result.changes;
   }
 
@@ -440,6 +520,81 @@ export class DatabaseManager {
     } else {
       const result = stmt.run(params);
       return [{ changes: result.changes, lastInsertRowid: result.lastInsertRowid }];
+    }
+  }
+
+  // ── Row History ──────────────────────────────────────────────────────────────
+
+  getTableHistory(table: string, limit = 50, offset = 0): RowHistoryEntry[] {
+    const dbName = this.getCurrentDbName();
+    const rows = this.metaDb
+      .prepare(
+        `SELECT id, database, "table" as tbl, row_pk, action, old_data, new_data, created_at
+         FROM row_history
+         WHERE database = ? AND "table" = ?
+         ORDER BY id DESC
+         LIMIT ? OFFSET ?`
+      )
+      .all(dbName, table, limit, offset) as RawHistoryRow[];
+    return rows.map(parseHistoryRow);
+  }
+
+  getRowHistory(table: string, rowPk: string): RowHistoryEntry[] {
+    const dbName = this.getCurrentDbName();
+    const rows = this.metaDb
+      .prepare(
+        `SELECT id, database, "table" as tbl, row_pk, action, old_data, new_data, created_at
+         FROM row_history
+         WHERE database = ? AND "table" = ? AND row_pk = ?
+         ORDER BY id DESC`
+      )
+      .all(dbName, table, rowPk) as RawHistoryRow[];
+    return rows.map(parseHistoryRow);
+  }
+
+  revertChange(historyId: number): { action: string; detail: string } {
+    const dbName = this.getCurrentDbName();
+    const row = this.metaDb
+      .prepare(
+        `SELECT id, database, "table" as tbl, row_pk, action, old_data, new_data, created_at
+         FROM row_history WHERE id = ? AND database = ?`
+      )
+      .get(historyId, dbName) as RawHistoryRow | undefined;
+    if (!row) {
+      throw new Error(`History entry ${historyId} not found`);
+    }
+    const entry = parseHistoryRow(row);
+    const db = this.getDb();
+    const table = entry.table;
+
+    switch (entry.action) {
+      case "insert": {
+        // Revert an insert → delete the row
+        if (!entry.row_pk) throw new Error("Cannot revert: missing row pk");
+        const pkCol = this.getPkColumn(table);
+        this.deleteRows(table, `"${pkCol.replace(/"/g, '""')}" = ?`, [entry.row_pk]);
+        return { action: "delete", detail: `Deleted row ${entry.row_pk} (reverted insert)` };
+      }
+      case "update": {
+        // Revert an update → restore old_data
+        if (!entry.old_data || !entry.row_pk) throw new Error("Cannot revert: missing old data or row pk");
+        const pkCol = this.getPkColumn(table);
+        // Build SET from old_data, excluding the pk column itself
+        const setCols: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(entry.old_data)) {
+          if (k !== pkCol) setCols[k] = v;
+        }
+        this.updateRows(table, setCols, `"${pkCol.replace(/"/g, '""')}" = ?`, [entry.row_pk]);
+        return { action: "update", detail: `Restored row ${entry.row_pk} to previous state (reverted update)` };
+      }
+      case "delete": {
+        // Revert a delete → re-insert the old row
+        if (!entry.old_data) throw new Error("Cannot revert: missing old data");
+        this.insertRows(table, [entry.old_data]);
+        return { action: "insert", detail: `Re-inserted row (reverted delete)` };
+      }
+      default:
+        throw new Error(`Unknown action: ${entry.action}`);
     }
   }
 
@@ -878,6 +1033,41 @@ export interface ColumnMetadata {
   column: string;
   field_type: FieldType;
   config: Record<string, unknown>;
+}
+
+export interface RowHistoryEntry {
+  id: number;
+  database: string;
+  table: string;
+  row_pk: string | null;
+  action: "insert" | "update" | "delete";
+  old_data: Record<string, unknown> | null;
+  new_data: Record<string, unknown> | null;
+  created_at: string;
+}
+
+interface RawHistoryRow {
+  id: number;
+  database: string;
+  tbl: string;
+  row_pk: string | null;
+  action: string;
+  old_data: string | null;
+  new_data: string | null;
+  created_at: string;
+}
+
+function parseHistoryRow(row: RawHistoryRow): RowHistoryEntry {
+  return {
+    id: row.id,
+    database: row.database,
+    table: row.tbl,
+    row_pk: row.row_pk,
+    action: row.action as RowHistoryEntry["action"],
+    old_data: row.old_data ? JSON.parse(row.old_data) : null,
+    new_data: row.new_data ? JSON.parse(row.new_data) : null,
+    created_at: row.created_at,
+  };
 }
 
 export type AlterOperation =
