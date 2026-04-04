@@ -75,7 +75,7 @@ export default function App() {
           // Refresh column metadata for current table
           const current = activeItemRef.current;
           if (current) {
-            const tblName = current.kind === "table" ? current.name : current.sql.match(/FROM\s+["']?(\w+)["']?/i)?.[1];
+            const tblName = current.kind === "table" ? current.name : current.sql.match(/FROM\s+["`']?(\w+)["`']?/i)?.[1];
             if (tblName) {
               const meta = await api.getAllColumnMetadata(tblName);
               setColumnMetadata(meta);
@@ -149,7 +149,7 @@ export default function App() {
         const result = await api.query(first.query);
         setRows(result);
         // Try to extract table name from simple SELECT queries to get real schema types
-        const tableMatch = first.query.match(/FROM\s+["']?(\w+)["']?/i);
+        const tableMatch = first.query.match(/FROM\s+["`']?(\w+)["`']?/i);
         if (tableMatch && tbls.includes(tableMatch[1])) {
           const [cols, meta] = await Promise.all([
             api.describeTable(tableMatch[1]),
@@ -314,7 +314,7 @@ export default function App() {
       const result = await api.query(page.query);
       setRows(result);
       // Try to get real schema types from the table
-      const tableMatch = page.query.match(/FROM\s+["']?(\w+)["']?/i);
+      const tableMatch = page.query.match(/FROM\s+["`']?(\w+)["`']?/i);
       if (tableMatch) {
         try {
           const [cols, meta] = await Promise.all([
@@ -388,7 +388,7 @@ export default function App() {
       try {
         const result = await api.query(activeItem.sql);
         setRows(result);
-        const tableMatch = activeItem.sql.match(/FROM\s+["']?(\w+)["']?/i);
+        const tableMatch = activeItem.sql.match(/FROM\s+["`']?(\w+)["`']?/i);
         if (tableMatch) {
           const [cols, meta, colOpts] = await Promise.all([
             api.describeTable(tableMatch[1]),
@@ -714,7 +714,7 @@ export default function App() {
               </div>
               {showHistory && (
                 <HistoryPanel
-                  tableName={activeItem.kind === "table" ? activeItem.name : (activeItem.sql.match(/FROM\s+["']?(\w+)["']?/i)?.[1] ?? activeItem.name)}
+                  tableName={activeItem.kind === "table" ? activeItem.name : (activeItem.sql.match(/FROM\s+["`']?(\w+)["`']?/i)?.[1] ?? activeItem.name)}
                   onClose={() => setShowHistory(false)}
                   onRevert={refresh}
                 />

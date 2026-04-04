@@ -86,7 +86,7 @@ function DiffBlock({ entry, expanded }: { entry: RowHistoryEntry; expanded: bool
 
   if (entry.action === "update" && entry.old_data && entry.new_data) {
     // Show fields in natural column order, changes inline
-    const allKeys = Object.keys(entry.new_data);
+    const allKeys = [...new Set([...Object.keys(entry.old_data), ...Object.keys(entry.new_data)])];
     return (
       <div className="ht-diff">
         {allKeys.map((k) => {
@@ -139,6 +139,13 @@ export default function HistoryPanel({ tableName, onClose, onRevert }: HistoryPa
   const [error, setError] = useState<string | null>(null);
   const [reverting, setReverting] = useState<number | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const [, setTick] = useState(0);
+
+  // Force re-render every 60 seconds so relative timestamps stay fresh
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 60000);
+    return () => clearInterval(id);
+  }, []);
 
   const loadHistory = useCallback(async () => {
     setLoading(true);

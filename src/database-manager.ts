@@ -105,13 +105,22 @@ export class DatabaseManager {
         action TEXT NOT NULL,
         old_data TEXT,
         new_data TEXT,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        reverted_at TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_row_history_lookup
         ON row_history (database, "table", created_at);
       CREATE INDEX IF NOT EXISTS idx_row_history_row
         ON row_history (database, "table", row_pk);
     `);
+
+    // Migration: add reverted_at column to row_history if missing
+    const hasRevertedAt = this.metaDb
+      .prepare(`SELECT COUNT(*) as cnt FROM pragma_table_info('row_history') WHERE name = 'reverted_at'`)
+      .get() as { cnt: number };
+    if (hasRevertedAt.cnt === 0) {
+      this.metaDb.exec(`ALTER TABLE row_history ADD COLUMN reverted_at TEXT DEFAULT NULL`);
+    }
 
     // Migrate existing column_options into column_metadata
     this.migrateColumnOptionsToMetadata();
@@ -357,7 +366,11 @@ export class DatabaseManager {
   private getPkColumn(table: string): string {
     const db = this.getDb();
     const cols = db.prepare(`PRAGMA table_info("${table.replace(/"/g, '""')}")`).all() as { name: string; pk: number }[];
-    const pk = cols.find((c) => c.pk === 1);
+    const pkCols = cols.filter((c) => c.pk > 0);
+    if (pkCols.length > 1) {
+      throw new Error("Row history does not support tables with composite primary keys");
+    }
+    const pk = pkCols.find((c) => c.pk === 1);
     return pk ? pk.name : "rowid";
   }
 
@@ -488,8 +501,9 @@ export class DatabaseManager {
     );
     const result = stmt.run([...setValues, ...params]);
 
-    // Snapshot rows after update and record history
+    // Collect history entries after successful SQL, then write to metaDb
     const safePk = pkCol.replace(/"/g, '""');
+    const historyQueue: { pk: string; oldSnapshot: Record<string, unknown>; afterSnapshot: Record<string, unknown> | null }[] = [];
     for (const before of beforeRows) {
       const pk = String(before[pkCol]);
       // Remove rowid from snapshot if it was injected for PK tracking
@@ -501,7 +515,11 @@ export class DatabaseManager {
       if (after && usesRowid) {
         afterSnapshot = (({ rowid, ...rest }) => rest)(after);
       }
-      this.recordHistory(table, pk, "update", snapshot, afterSnapshot);
+      historyQueue.push({ pk, oldSnapshot: snapshot, afterSnapshot });
+    }
+    // Record history only after the SQL has succeeded
+    for (const h of historyQueue) {
+      this.recordHistory(table, h.pk, "update", h.oldSnapshot, h.afterSnapshot);
     }
 
     return result.changes;
@@ -521,10 +539,16 @@ export class DatabaseManager {
     const stmt = db.prepare(`DELETE FROM "${table}" WHERE ${where}`);
     const result = stmt.run(params);
 
+    // Collect history entries after successful SQL, then write to metaDb
+    const historyQueue: { pk: string; snapshot: Record<string, unknown> }[] = [];
     for (const before of beforeRows) {
       const pk = String(before[pkCol]);
       const snapshot = usesRowid ? (({ rowid, ...rest }) => rest)(before) : before;
-      this.recordHistory(table, pk, "delete", snapshot, null);
+      historyQueue.push({ pk, snapshot });
+    }
+    // Record history only after the SQL has succeeded
+    for (const h of historyQueue) {
+      this.recordHistory(table, h.pk, "delete", h.snapshot, null);
     }
 
     return result.changes;
@@ -576,24 +600,29 @@ export class DatabaseManager {
     const dbName = this.getCurrentDbName();
     const row = this.metaDb
       .prepare(
-        `SELECT id, database, "table" as tbl, row_pk, action, old_data, new_data, created_at
+        `SELECT id, database, "table" as tbl, row_pk, action, old_data, new_data, created_at, reverted_at
          FROM row_history WHERE id = ? AND database = ?`
       )
-      .get(historyId, dbName) as RawHistoryRow | undefined;
+      .get(historyId, dbName) as (RawHistoryRow & { reverted_at: string | null }) | undefined;
     if (!row) {
       throw new Error(`History entry ${historyId} not found`);
+    }
+    if (row.reverted_at) {
+      throw new Error("Change has already been reverted");
     }
     const entry = parseHistoryRow(row);
     const db = this.getDb();
     const table = entry.table;
 
+    let result: { action: string; detail: string };
     switch (entry.action) {
       case "insert": {
         // Revert an insert → delete the row
         if (!entry.row_pk) throw new Error("Cannot revert: missing row pk");
         const pkCol = this.getPkColumn(table);
         this.deleteRows(table, `"${pkCol.replace(/"/g, '""')}" = ?`, [entry.row_pk]);
-        return { action: "delete", detail: `Deleted row ${entry.row_pk} (reverted insert)` };
+        result = { action: "delete", detail: `Deleted row ${entry.row_pk} (reverted insert)` };
+        break;
       }
       case "update": {
         // Revert an update → restore old_data
@@ -605,17 +634,26 @@ export class DatabaseManager {
           if (k !== pkCol) setCols[k] = v;
         }
         this.updateRows(table, setCols, `"${pkCol.replace(/"/g, '""')}" = ?`, [entry.row_pk]);
-        return { action: "update", detail: `Restored row ${entry.row_pk} to previous state (reverted update)` };
+        result = { action: "update", detail: `Restored row ${entry.row_pk} to previous state (reverted update)` };
+        break;
       }
       case "delete": {
         // Revert a delete → re-insert the old row
         if (!entry.old_data) throw new Error("Cannot revert: missing old data");
         this.insertRows(table, [entry.old_data]);
-        return { action: "insert", detail: `Re-inserted row (reverted delete)` };
+        result = { action: "insert", detail: `Re-inserted row (reverted delete)` };
+        break;
       }
       default:
         throw new Error(`Unknown action: ${entry.action}`);
     }
+
+    // Mark as reverted
+    this.metaDb
+      .prepare(`UPDATE row_history SET reverted_at = ? WHERE id = ?`)
+      .run(new Date().toISOString(), historyId);
+
+    return result;
   }
 
   // ── Query Pages ──────────────────────────────────────────────────────────────
