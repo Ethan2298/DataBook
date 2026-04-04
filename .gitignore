@@ -8,3 +8,4 @@ dist/
 electron/renderer/dist/
 mcp-server/dist/
 mcp-server/node_modules/
+.claude/

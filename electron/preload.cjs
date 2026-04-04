@@ -31,7 +31,7 @@ contextBridge.exposeInMainWorld('databook', {
   query: (sql, params) => ipcRenderer.invoke('db:query', sql, params),
 
   // Query Pages
-  createQueryPage: (name, query, viewType) => ipcRenderer.invoke('db:createQueryPage', name, query, viewType),
+  createQueryPage: (name, query, viewType, viewConfig) => ipcRenderer.invoke('db:createQueryPage', name, query, viewType, viewConfig),
   listQueryPages: () => ipcRenderer.invoke('db:listQueryPages'),
   updateQueryPage: (name, updates) => ipcRenderer.invoke('db:updateQueryPage', name, updates),
   deleteQueryPage: (name) => ipcRenderer.invoke('db:deleteQueryPage', name),

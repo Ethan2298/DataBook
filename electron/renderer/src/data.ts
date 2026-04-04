@@ -6,6 +6,7 @@ export interface QueryPage {
   database: string;
   query: string;
   view_type: string;
+  view_config: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -38,3 +39,9 @@ export interface ColumnOption {
 
 // Map of "table.column" -> ColumnOption[]
 export type ColumnOptionsMap = Record<string, ColumnOption[]>;
+
+export interface ViewConfig {
+  groupByCol?: string;
+  titleCol?: string;
+  dateCol?: string;
+}

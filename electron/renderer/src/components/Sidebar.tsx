@@ -4,11 +4,14 @@ import type { QueryPage, ActiveItem } from "../data";
 interface SidebarProps {
   databases: string[];
   currentDb: string | null;
+  tables: string[];
   queryPages: QueryPage[];
   activeItem: ActiveItem | null;
   onSelectDb: (name: string) => void;
   onCreateDb: (name: string) => void;
   onDeleteDb: (name: string) => void;
+  onSelectTable: (name: string) => void;
+  onDropTable: (name: string) => void;
   onSelectQueryPage: (page: QueryPage) => void;
   onDeleteQueryPage: (name: string) => void;
 }
@@ -16,11 +19,14 @@ interface SidebarProps {
 export default function Sidebar({
   databases,
   currentDb,
+  tables,
   queryPages,
   activeItem,
   onSelectDb,
   onCreateDb,
   onDeleteDb,
+  onSelectTable,
+  onDropTable,
   onSelectQueryPage,
   onDeleteQueryPage,
 }: SidebarProps) {
@@ -53,6 +59,34 @@ export default function Sidebar({
 
   return (
     <aside className="sidebar">
+      {/* Tables */}
+      {currentDb && (
+        <div className="sidebar-section">
+          <div className="sidebar-section-header">
+            <span className="sidebar-section-label">TABLES</span>
+          </div>
+          {tables.map((t) => (
+            <div
+              key={t}
+              className={`sidebar-item ${activeItem?.kind === "table" && activeItem.name === t ? "active" : ""}`}
+              onClick={() => onSelectTable(t)}
+              onContextMenu={(e) => handleContextMenu(e, "table", t)}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <line x1="3" y1="9" x2="21" y2="9" />
+                <line x1="3" y1="15" x2="21" y2="15" />
+                <line x1="9" y1="3" x2="9" y2="21" />
+              </svg>
+              <span>{t}</span>
+            </div>
+          ))}
+          {tables.length === 0 && (
+            <div className="sidebar-empty">No tables yet</div>
+          )}
+        </div>
+      )}
+
       {/* Query Pages / Views */}
       {currentDb && (
         <div className="sidebar-section">
@@ -143,6 +177,7 @@ export default function Sidebar({
             className="context-menu-item danger"
             onClick={() => {
               if (contextMenu.type === "database") onDeleteDb(contextMenu.name);
+              else if (contextMenu.type === "table") onDropTable(contextMenu.name);
               else if (contextMenu.type === "query_page") onDeleteQueryPage(contextMenu.name);
               closeContextMenu();
             }}

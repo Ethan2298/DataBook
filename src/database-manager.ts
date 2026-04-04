@@ -8,6 +8,7 @@ export interface QueryPage {
   database: string;
   query: string;
   view_type: string;
+  view_config: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -39,6 +40,20 @@ export class DatabaseManager {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_query_pages_name_db
         ON query_pages (name, database);
 
+      -- Migration: add view_config column if missing
+      -- Uses a safe approach: ALTER TABLE only if column doesn't exist
+      CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY);
+    `);
+
+    // Safe migration for view_config column
+    const hasViewConfig = this.metaDb
+      .prepare(`SELECT COUNT(*) as cnt FROM pragma_table_info('query_pages') WHERE name = 'view_config'`)
+      .get() as { cnt: number };
+    if (hasViewConfig.cnt === 0) {
+      this.metaDb.exec(`ALTER TABLE query_pages ADD COLUMN view_config TEXT DEFAULT NULL`);
+    }
+
+    this.metaDb.exec(`
       CREATE TABLE IF NOT EXISTS column_options (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         database TEXT NOT NULL,
@@ -263,7 +278,8 @@ export class DatabaseManager {
   createQueryPage(
     name: string,
     query: string,
-    viewType: string
+    viewType: string,
+    viewConfig?: string | null
   ): QueryPage {
     const dbName = this.getCurrentDbName();
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -274,13 +290,14 @@ export class DatabaseManager {
       database: dbName,
       query,
       view_type: viewType,
+      view_config: viewConfig ?? null,
       created_at: now,
       updated_at: now,
     };
     this.metaDb
       .prepare(
-        `INSERT INTO query_pages (id, name, database, query, view_type, created_at, updated_at)
-         VALUES (@id, @name, @database, @query, @view_type, @created_at, @updated_at)`
+        `INSERT INTO query_pages (id, name, database, query, view_type, view_config, created_at, updated_at)
+         VALUES (@id, @name, @database, @query, @view_type, @view_config, @created_at, @updated_at)`
       )
       .run(page);
     return page;
@@ -295,7 +312,7 @@ export class DatabaseManager {
 
   updateQueryPage(
     name: string,
-    updates: Partial<Pick<QueryPage, "name" | "query" | "view_type">>
+    updates: Partial<Pick<QueryPage, "name" | "query" | "view_type" | "view_config">>
   ): QueryPage {
     const dbName = this.getCurrentDbName();
     const existing = this.metaDb
@@ -312,7 +329,7 @@ export class DatabaseManager {
     };
     this.metaDb
       .prepare(
-        `UPDATE query_pages SET name = @name, query = @query, view_type = @view_type, updated_at = @updated_at
+        `UPDATE query_pages SET name = @name, query = @query, view_type = @view_type, view_config = @view_config, updated_at = @updated_at
          WHERE id = @id`
       )
       .run(updated);

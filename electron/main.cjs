@@ -54,7 +54,7 @@ handle('db:deleteRows', (m, table, where, params) => m.deleteRows(table, where, 
 handle('db:query', (m, sql, params) => m.query(sql, params ?? []));
 
 // ── Query Pages ─────────────────────────────────────────────────────────────
-handle('db:createQueryPage', (m, name, query, viewType) => m.createQueryPage(name, query, viewType));
+handle('db:createQueryPage', (m, name, query, viewType, viewConfig) => m.createQueryPage(name, query, viewType, viewConfig));
 handle('db:listQueryPages', (m) => m.listQueryPages());
 handle('db:updateQueryPage', (m, name, updates) => m.updateQueryPage(name, updates));
 handle('db:deleteQueryPage', (m, name) => m.deleteQueryPage(name));

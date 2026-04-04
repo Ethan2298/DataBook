@@ -917,6 +917,25 @@ body {
   color: #9B9A97;
 }
 
+.kanban-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  color: #9B9A97;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  width: 100%;
+}
+
+.kanban-add-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #ebebeb;
+}
+
 /* ── Calendar ── */
 
 .view-calendar {
@@ -1052,6 +1071,21 @@ body {
   padding: 4px 6px;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 4px;
+  border-left: 3px solid #555;
+  cursor: pointer;
+}
+
+.calendar-task:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.calendar-task[draggable="true"] {
+  cursor: grab;
+}
+
+.calendar-task[draggable="true"]:active {
+  cursor: grabbing;
+  opacity: 0.6;
 }
 
 .calendar-task-title {
@@ -1061,4 +1095,276 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.calendar-more-btn {
+  background: none;
+  border: none;
+  color: #9B9A97;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+  text-align: left;
+}
+
+.calendar-more-btn:hover {
+  color: #E8E8E3;
+}
+
+.calendar-inline-input {
+  width: 100%;
+  padding: 3px 6px;
+  background: #1f1f1f;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #ebebeb;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  outline: none;
+}
+
+.calendar-inline-input:focus {
+  border-color: #555;
+}
+
+.calendar-popover {
+  background: #1f1f1f;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 200px;
+  max-width: 320px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.calendar-popover-row {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.calendar-popover-label {
+  color: #9B9A97;
+  flex-shrink: 0;
+  min-width: 60px;
+  font-weight: 500;
+}
+
+.calendar-popover-value {
+  color: #ebebeb;
+  word-break: break-word;
+}
+
+/* ── View Config Bar ── */
+
+.view-config-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  background: #1a1a1a;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+/* ── Column Picker ── */
+
+.column-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.column-picker-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #9B9A97;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.column-picker-select {
+  background: #1f1f1f;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  color: #ebebeb;
+  outline: none;
+  cursor: pointer;
+  min-width: 100px;
+}
+
+.column-picker-select:hover {
+  border-color: #444;
+}
+
+.column-picker-select:focus {
+  border-color: #555;
+}
+
+.column-picker-select option {
+  background: #1f1f1f;
+  color: #ebebeb;
+}
+
+/* ── Detail Panel ── */
+
+.detail-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 900;
+}
+
+.detail-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 400px;
+  height: 100vh;
+  background: #1a1a1a;
+  border-left: 1px solid #2a2a2a;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.4);
+  z-index: 901;
+  display: flex;
+  flex-direction: column;
+  animation: detail-panel-slide-in 200ms ease-out;
+}
+
+@keyframes detail-panel-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.detail-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid #2a2a2a;
+  flex-shrink: 0;
+}
+
+.detail-panel-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: #ebebeb;
+}
+
+.detail-panel-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  color: #9B9A97;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.detail-panel-close:hover {
+  color: #ebebeb;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.detail-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.detail-panel-field {
+  padding: 8px 16px;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.detail-panel-label {
+  color: #9B9A97;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.detail-panel-value {
+  color: #ebebeb;
+  font-size: 14px;
+  padding: 4px 0;
+}
+
+.detail-panel-text {
+  color: #ebebeb;
+  min-height: 20px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: background 0.12s;
+}
+
+.detail-panel-text.editable {
+  cursor: pointer;
+}
+
+.detail-panel-text.editable:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.detail-panel-empty {
+  color: #555;
+}
+
+.detail-panel-input {
+  width: 100%;
+  background: #141414;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #ebebeb;
+  font-size: 14px;
+  padding: 6px 8px;
+  outline: none;
+  font-family: inherit;
+}
+
+.detail-panel-input:focus {
+  border-color: #555;
+}
+
+.detail-panel-status {
+  position: relative;
+}
+
+/* ── Row expand button (TableView) ── */
+
+.row-expand-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: none;
+  color: #9B9A97;
+  cursor: pointer;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, background 0.12s;
+  padding: 0;
+}
+
+.row-expand-btn.row-expand-visible {
+  opacity: 1;
+}
+
+.row-expand-btn:hover {
+  color: #ebebeb;
+  background: rgba(255, 255, 255, 0.08);
 }
