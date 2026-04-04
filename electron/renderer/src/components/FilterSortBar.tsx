@@ -289,6 +289,8 @@ export default function FilterSortBar({
         <button
           className={`action-btn ${filters.rules.length > 0 ? "active" : ""}`}
           onClick={() => { setShowFilters(!showFilters); setShowSorts(false); }}
+          aria-expanded={showFilters}
+          aria-label={`Filter${filters.rules.length > 0 ? ` (${filters.rules.length} active)` : ""}`}
         >
           <FilterIcon />
           Filter
@@ -353,6 +355,8 @@ export default function FilterSortBar({
         <button
           className={`action-btn ${sorts.length > 0 ? "active" : ""}`}
           onClick={() => { setShowSorts(!showSorts); setShowFilters(false); }}
+          aria-expanded={showSorts}
+          aria-label={`Sort${sorts.length > 0 ? ` (${sorts.length} active)` : ""}`}
         >
           <SortIcon />
           Sort

@@ -9,6 +9,9 @@ import EmptyState from "./components/EmptyState";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ColumnPicker from "./components/ColumnPicker";
 import HistoryPanel from "./components/HistoryPanel";
+import ToastContainer from "./components/Toast";
+import ConfirmDialog from "./components/ConfirmDialog";
+import type { ToastItem } from "./components/Toast";
 import api from "./api";
 import { applyFilterSort } from "./filter-sort";
 import type { QueryPage, Row, ViewType, ViewConfig, ActiveItem, ColumnInfo, ColumnOptionsMap, ColumnMetadataMap, FilterGroup, SortRule } from "./data";
@@ -28,6 +31,27 @@ export default function App() {
   const [columnOptions, setColumnOptions] = useState<ColumnOptionsMap>({});
   const [viewConfig, setViewConfig] = useState<ViewConfig>({});
   const [columnMetadata, setColumnMetadata] = useState<ColumnMetadataMap>({});
+
+  // Loading state
+  const [loading, setLoading] = useState(false);
+
+  // Toast notifications
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const addToast = useCallback((message: string, type: ToastItem["type"] = "success") => {
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+    setToasts((prev) => [...prev, { id, message, type }].slice(-5));
+  }, []);
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // Confirmation dialog
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   // Filter & sort state
   const [filters, setFilters] = useState<FilterGroup>({ conjunction: "and", rules: [] });
@@ -122,6 +146,7 @@ export default function App() {
   // Select a database — automatically shows an "all" view
   const selectDb = useCallback(async (name: string) => {
     try {
+      setLoading(true);
       await api.selectDatabase(name);
       setCurrentDb(name);
       setError(null);
@@ -209,23 +234,31 @@ export default function App() {
       }
     } catch (err) {
       setError(String(err));
+    } finally {
+      setLoading(false);
     }
   }, []);
 
   // Create a new database
   const createDb = useCallback(async (name: string) => {
     try {
+      setLoading(true);
       await api.createDatabase(name);
       setDatabases((prev) => [...prev, name].sort());
       await selectDb(name);
+      addToast("Database created");
     } catch (err) {
       setError(String(err));
+      addToast(String(err), "error");
+    } finally {
+      setLoading(false);
     }
-  }, [selectDb]);
+  }, [selectDb, addToast]);
 
   // Delete a database
   const deleteDb = useCallback(async (name: string) => {
     try {
+      setLoading(true);
       await api.deleteDatabase(name);
       setDatabases((prev) => prev.filter((d) => d !== name));
       if (currentDb === name) {
@@ -236,20 +269,27 @@ export default function App() {
         setRows([]);
         setColumns([]);
       }
+      addToast("Database deleted");
     } catch (err) {
       setError(String(err));
+      addToast(String(err), "error");
+    } finally {
+      setLoading(false);
     }
-  }, [currentDb]);
+  }, [currentDb, addToast]);
 
   // Execute a query and display results
   const runQuery = useCallback(async (sql: string) => {
     try {
+      setLoading(true);
       setError(null);
       const result = await api.query(sql);
       setRows(result);
     } catch (err) {
       setError(String(err));
       setRows([]);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -368,7 +408,7 @@ export default function App() {
   // Change view type for active item
   const changeView = useCallback(async (viewType: ViewType) => {
     if (!activeItem) return;
-    setActiveItem({ ...activeItem, viewType });
+    setActiveItem((prev) => prev ? { ...prev, viewType } : prev);
 
     // Load persisted filter/sort config for the new view type
     try {
@@ -417,6 +457,7 @@ export default function App() {
   // Create table
   const createTable = useCallback(async (tableName: string, columnDefs: { name: string; type: string }[]) => {
     try {
+      setLoading(true);
       await api.createTable(tableName, columnDefs.map(c => ({
         name: c.name,
         type: c.type,
@@ -425,20 +466,26 @@ export default function App() {
       })));
       setTables((prev) => [...prev, tableName].sort());
       await selectTable(tableName);
+      addToast("Table created");
     } catch (err) {
       setError(String(err));
+      addToast(String(err), "error");
+    } finally {
+      setLoading(false);
     }
-  }, [selectTable]);
+  }, [selectTable, addToast]);
 
   // Insert a row
   const insertRow = useCallback(async (table: string, row: Row) => {
     try {
       await api.insertRows(table, [row]);
       await refresh();
+      addToast("Row added");
     } catch (err) {
       setError(String(err));
+      addToast(String(err), "error");
     }
-  }, [refresh]);
+  }, [refresh, addToast]);
 
   // Update a row
   const updateRow = useCallback(async (table: string, pkCol: string, pkVal: unknown, updates: Row) => {
@@ -456,15 +503,20 @@ export default function App() {
   // Delete a row
   const deleteRow = useCallback(async (table: string, pkCol: string, pkVal: unknown) => {
     try {
+      setLoading(true);
       if (!columns.some((c) => c.name === pkCol)) {
         throw new Error(`Unknown column: ${pkCol}`);
       }
       await api.deleteRows(table, `"${pkCol}" = ?`, [pkVal]);
       await refresh();
+      addToast("Row deleted");
     } catch (err) {
       setError(String(err));
+      addToast(String(err), "error");
+    } finally {
+      setLoading(false);
     }
-  }, [refresh, columns]);
+  }, [refresh, columns, addToast]);
 
   // Create query page
   const createQueryPage = useCallback(async (name: string, sql: string, viewType: string) => {
@@ -472,14 +524,17 @@ export default function App() {
       const configJson = JSON.stringify(viewConfig);
       const page = await api.createQueryPage(name, sql, viewType, configJson);
       setQueryPages((prev) => [...prev, page]);
+      addToast("View saved");
     } catch (err) {
       setError(String(err));
+      addToast(String(err), "error");
     }
-  }, [viewConfig]);
+  }, [viewConfig, addToast]);
 
   // Delete query page
   const deleteQueryPage = useCallback(async (name: string) => {
     try {
+      setLoading(true);
       await api.deleteQueryPage(name);
       setQueryPages((prev) => prev.filter((p) => p.name !== name));
       if (activeItem?.kind === "query_page" && activeItem.name === name) {
@@ -487,14 +542,19 @@ export default function App() {
         setRows([]);
         setColumns([]);
       }
+      addToast("View deleted");
     } catch (err) {
       setError(String(err));
+      addToast(String(err), "error");
+    } finally {
+      setLoading(false);
     }
-  }, [activeItem]);
+  }, [activeItem, addToast]);
 
   // Drop a table
   const dropTable = useCallback(async (tableName: string) => {
     try {
+      setLoading(true);
       await api.dropTable(tableName);
       setTables((prev) => prev.filter((t) => t !== tableName));
       if (activeItem?.kind === "table" && activeItem.name === tableName) {
@@ -502,10 +562,14 @@ export default function App() {
         setRows([]);
         setColumns([]);
       }
+      addToast("Table deleted");
     } catch (err) {
       setError(String(err));
+      addToast(String(err), "error");
+    } finally {
+      setLoading(false);
     }
-  }, [activeItem]);
+  }, [activeItem, addToast]);
 
   // Debounced persistence of filter/sort config.
   // We use a flag to skip saves triggered by programmatic loads (selectTable,
@@ -582,6 +646,39 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [viewConfig, activeItem]);
 
+  // Confirmation wrappers for destructive actions
+  const handleDeleteDb = useCallback((name: string) => {
+    setConfirmDialog({
+      title: "Delete database",
+      message: `Delete database "${name}"? This action cannot be undone.`,
+      onConfirm: () => { deleteDb(name); setConfirmDialog(null); },
+    });
+  }, [deleteDb]);
+
+  const handleDropTable = useCallback((name: string) => {
+    setConfirmDialog({
+      title: "Delete table",
+      message: `Delete table "${name}"? All data will be lost.`,
+      onConfirm: () => { dropTable(name); setConfirmDialog(null); },
+    });
+  }, [dropTable]);
+
+  const handleDeleteRow = useCallback((table: string, pkCol: string, pkVal: unknown) => {
+    setConfirmDialog({
+      title: "Delete row",
+      message: "Delete this row? This action cannot be undone.",
+      onConfirm: () => { deleteRow(table, pkCol, pkVal); setConfirmDialog(null); },
+    });
+  }, [deleteRow]);
+
+  const handleDeleteQueryPage = useCallback((name: string) => {
+    setConfirmDialog({
+      title: "Delete view",
+      message: `Delete view "${name}"?`,
+      onConfirm: () => { deleteQueryPage(name); setConfirmDialog(null); },
+    });
+  }, [deleteQueryPage]);
+
   // Resolved config: merge user overrides with defaults
   const resolvedConfig = useMemo((): Required<ViewConfig> => ({
     groupByCol: viewConfig.groupByCol || defaultViewConfig.groupByCol || "",
@@ -597,13 +694,14 @@ export default function App() {
         tables={tables}
         queryPages={queryPages}
         activeItem={activeItem}
+        loading={loading}
         onSelectDb={selectDb}
         onCreateDb={createDb}
-        onDeleteDb={deleteDb}
+        onDeleteDb={handleDeleteDb}
         onSelectTable={selectTable}
-        onDropTable={dropTable}
+        onDropTable={handleDropTable}
         onSelectQueryPage={selectQueryPage}
-        onDeleteQueryPage={deleteQueryPage}
+        onDeleteQueryPage={handleDeleteQueryPage}
       />
       <main className="content">
         <ErrorBoundary>
@@ -611,6 +709,7 @@ export default function App() {
           <>
             <TopBar
               activeItem={activeItem}
+              loading={loading}
               onViewChange={changeView}
               onCreateQueryPage={createQueryPage}
               onRefresh={refresh}
@@ -626,7 +725,8 @@ export default function App() {
               onFiltersChange={handleFiltersChange}
               onSortsChange={handleSortsChange}
             />
-            {error && <div className="error-bar">{error}</div>}
+            {loading && <div className="loading-bar" role="status" aria-label="Loading"><div className="loading-bar-progress" /></div>}
+            {error && <div className="error-bar" role="alert" aria-live="polite">{error}</div>}
             {activeItem.viewType === "kanban" && colNames.length > 0 && (
               <div className="view-config-bar">
                 <ColumnPicker
@@ -670,7 +770,7 @@ export default function App() {
                 columnMetadata={columnMetadata}
                 onInsertRow={activeItem.kind === "table" ? (row) => insertRow(activeItem.name, row) : undefined}
                 onUpdateRow={activeItem.kind === "table" ? (pkCol, pkVal, updates) => updateRow(activeItem.name, pkCol, pkVal, updates) : undefined}
-                onDeleteRow={activeItem.kind === "table" ? (pkCol, pkVal) => deleteRow(activeItem.name, pkCol, pkVal) : undefined}
+                onDeleteRow={activeItem.kind === "table" ? (pkCol, pkVal) => handleDeleteRow(activeItem.name, pkCol, pkVal) : undefined}
                 onFieldTypeChange={activeItem.kind === "table" ? async (col, fieldType, config) => {
                   await api.setColumnMetadata(activeItem.name, col, fieldType, config);
                   const meta = await api.getAllColumnMetadata(activeItem.name);
@@ -731,6 +831,17 @@ export default function App() {
         )}
         </ErrorBoundary>
       </main>
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      {confirmDialog && (
+        <ConfirmDialog
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          confirmLabel={confirmDialog.confirmLabel}
+          danger
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={() => setConfirmDialog(null)}
+        />
+      )}
     </div>
   );
 }

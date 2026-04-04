@@ -9,7 +9,9 @@ interface EmptyStateProps {
 
 export default function EmptyState({ hasDb, hasTables, onCreateDb, onCreateTable }: EmptyStateProps) {
   const [dbName, setDbName] = useState("");
+  const [dbError, setDbError] = useState<string | null>(null);
   const [tableName, setTableName] = useState("");
+  const [tableError, setTableError] = useState<string | null>(null);
   const [showTableForm, setShowTableForm] = useState(false);
   const [newCols, setNewCols] = useState([
     { name: "id", type: "INTEGER" },
@@ -17,19 +19,38 @@ export default function EmptyState({ hasDb, hasTables, onCreateDb, onCreateTable
   ]);
 
   const handleCreateDb = () => {
-    if (dbName.trim()) {
-      onCreateDb(dbName.trim());
-      setDbName("");
+    const trimmed = dbName.trim();
+    if (!trimmed) {
+      setDbError("Database name is required");
+      return;
     }
+    setDbError(null);
+    onCreateDb(trimmed);
+    setDbName("");
   };
 
   const handleCreateTable = () => {
-    if (tableName.trim() && newCols.length > 0) {
-      onCreateTable(tableName.trim(), newCols);
-      setTableName("");
-      setShowTableForm(false);
-      setNewCols([{ name: "id", type: "INTEGER" }, { name: "name", type: "TEXT" }]);
+    const trimmed = tableName.trim();
+    if (!trimmed) {
+      setTableError("Table name is required");
+      return;
     }
+    const emptyCol = newCols.find((c) => !c.name.trim());
+    if (emptyCol) {
+      setTableError("All columns must have a name");
+      return;
+    }
+    const names = newCols.map((c) => c.name.trim().toLowerCase());
+    const hasDuplicates = names.some((n, i) => names.indexOf(n) !== i);
+    if (hasDuplicates) {
+      setTableError("Column names must be unique");
+      return;
+    }
+    setTableError(null);
+    onCreateTable(trimmed, newCols);
+    setTableName("");
+    setShowTableForm(false);
+    setNewCols([{ name: "id", type: "INTEGER" }, { name: "name", type: "TEXT" }]);
   };
 
   const addColumn = () => {
@@ -50,12 +71,13 @@ export default function EmptyState({ hasDb, hasTables, onCreateDb, onCreateTable
           <div className="empty-form">
             <input
               type="text"
-              className="empty-input"
+              className={`empty-input ${dbError ? "input-error" : ""}`}
               placeholder="Database name..."
               value={dbName}
-              onChange={(e) => setDbName(e.target.value)}
+              onChange={(e) => { setDbName(e.target.value); setDbError(null); }}
               onKeyDown={(e) => e.key === "Enter" && handleCreateDb()}
             />
+            {dbError && <div className="validation-error">{dbError}</div>}
             <button className="empty-btn" onClick={handleCreateDb} disabled={!dbName.trim()}>
               Create Database
             </button>
@@ -80,11 +102,12 @@ export default function EmptyState({ hasDb, hasTables, onCreateDb, onCreateTable
           <div className="empty-form">
             <input
               type="text"
-              className="empty-input"
+              className={`empty-input ${tableError ? "input-error" : ""}`}
               placeholder="Table name..."
               value={tableName}
-              onChange={(e) => setTableName(e.target.value)}
+              onChange={(e) => { setTableName(e.target.value); setTableError(null); }}
             />
+            {tableError && <div className="validation-error">{tableError}</div>}
             <div className="empty-columns">
               {newCols.map((col, i) => (
                 <div key={i} className="empty-col-row">
@@ -97,6 +120,7 @@ export default function EmptyState({ hasDb, hasTables, onCreateDb, onCreateTable
                       const updated = [...newCols];
                       updated[i] = { ...col, name: e.target.value };
                       setNewCols(updated);
+                      setTableError(null);
                     }}
                   />
                   <select
@@ -117,6 +141,7 @@ export default function EmptyState({ hasDb, hasTables, onCreateDb, onCreateTable
                     <button
                       className="empty-col-remove"
                       onClick={() => setNewCols(newCols.filter((_, j) => j !== i))}
+                      aria-label="Remove column"
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="18" y1="6" x2="6" y2="18" />
