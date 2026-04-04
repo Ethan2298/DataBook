@@ -56,4 +56,8 @@ contextBridge.exposeInMainWorld('databook', {
   resolveRelation: (targetTable, ids, displayColumn) => ipcRenderer.invoke('db:resolveRelation', targetTable, ids, displayColumn),
   searchRelation: (targetTable, displayColumn, searchText) => ipcRenderer.invoke('db:searchRelation', targetTable, displayColumn, searchText),
   computeRollup: (table, rowId, config) => ipcRenderer.invoke('db:computeRollup', table, rowId, config),
+
+  // View Filter/Sort
+  getViewFilterSort: (itemName, itemKind, viewType) => ipcRenderer.invoke('db:getViewFilterSort', itemName, itemKind, viewType),
+  setViewFilterSort: (itemName, itemKind, viewType, config) => ipcRenderer.invoke('db:setViewFilterSort', itemName, itemKind, viewType, config),
 });

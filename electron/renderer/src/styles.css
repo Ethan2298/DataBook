@@ -1695,3 +1695,235 @@ input[type="number"].cell-edit-input::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
+/* ── Filter & Sort Bar ──────────────────────────────────────────────────── */
+
+.filter-sort-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 16px;
+  border-bottom: 1px solid #262626;
+  flex-shrink: 0;
+}
+
+.filter-sort-anchor {
+  position: relative;
+}
+
+.filter-sort-bar .action-btn.active {
+  color: #2383E2;
+}
+
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #2383E2;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.filter-sort-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 100;
+  min-width: 420px;
+  max-height: 400px;
+  overflow-y: auto;
+  background: #1E1E1E;
+  border: 1px solid #333;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  padding: 8px;
+}
+
+/* ── Filter rules ───────────────────────────────────────────────────────── */
+
+.conjunction-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 8px;
+  font-size: 12px;
+  color: #9B9A97;
+}
+
+.conjunction-label {
+  font-weight: 500;
+}
+
+.conjunction-toggle {
+  background: #2A2A2A;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #E8E8E3;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.conjunction-toggle:hover {
+  background: #333;
+}
+
+.filter-rule-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+}
+
+.filter-select {
+  background: transparent;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #E8E8E3;
+  font-size: 12px;
+  padding: 4px 6px;
+  min-width: 0;
+  outline: none;
+  cursor: pointer;
+}
+
+.filter-select:focus {
+  border-color: #2383E2;
+}
+
+.filter-select option {
+  background: #1E1E1E;
+  color: #E8E8E3;
+}
+
+.filter-value-input {
+  background: transparent;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #E8E8E3;
+  font-size: 12px;
+  padding: 4px 6px;
+  min-width: 0;
+  flex: 1;
+  outline: none;
+}
+
+.filter-value-input:focus {
+  border-color: #2383E2;
+}
+
+/* Date input styling for dark theme */
+.filter-value-input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+}
+
+.rule-delete-btn {
+  background: none;
+  border: none;
+  color: #9B9A97;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.rule-delete-btn:hover {
+  color: #E03E3E;
+}
+
+.add-rule-btn {
+  background: none;
+  border: none;
+  color: #9B9A97;
+  font-size: 12px;
+  padding: 6px 8px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+
+.add-rule-btn:hover {
+  color: #E8E8E3;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+}
+
+/* ── Sort rules ─────────────────────────────────────────────────────────── */
+
+.sort-rule-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+}
+
+.sort-drag-handle {
+  cursor: grab;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: #9B9A97;
+}
+
+.sort-drag-handle:active {
+  cursor: grabbing;
+}
+
+.direction-toggle {
+  background: #2A2A2A;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #E8E8E3;
+  font-size: 11px;
+  padding: 4px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.direction-toggle:hover {
+  background: #333;
+}
+
+/* ── Active pills ───────────────────────────────────────────────────────── */
+
+.active-pills {
+  display: flex;
+  gap: 6px;
+  margin-left: 4px;
+}
+
+.active-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: #2A2A2A;
+  border: 1px solid #333;
+  border-radius: 10px;
+  font-size: 11px;
+  color: #9B9A97;
+  white-space: nowrap;
+}
+
+.active-pill-close {
+  background: none;
+  border: none;
+  color: #9B9A97;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.active-pill-close:hover {
+  color: #E03E3E;
+}

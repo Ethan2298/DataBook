@@ -78,6 +78,10 @@ handle('db:resolveRelation', (m, targetTable, ids, displayColumn) => m.resolveRe
 handle('db:searchRelation', (m, targetTable, displayColumn, searchText) => m.searchRelation(targetTable, displayColumn, searchText));
 handle('db:computeRollup', (m, table, rowId, config) => m.computeRollup(table, rowId, config));
 
+// ── View Filter/Sort ───────────────────────────────────────────────────────
+handle('db:getViewFilterSort', (m, itemName, itemKind, viewType) => m.getViewFilterSort(itemName, itemKind, viewType));
+handle('db:setViewFilterSort', (m, itemName, itemKind, viewType, config) => m.setViewFilterSort(itemName, itemKind, viewType, config));
+
 // ── File watcher for external changes (e.g. MCP server) ─────────────────────
 
 let mainWindow = null;

@@ -1,6 +1,6 @@
 // Typed wrapper around the preload-exposed IPC bridge
 
-import type { QueryPage, ColumnInfo, ColumnOption, ColumnMetadata, ColumnMetadataMap } from "./data";
+import type { QueryPage, ColumnInfo, ColumnOption, ColumnMetadata, ColumnMetadataMap, ViewFilterSort } from "./data";
 
 export interface ColumnDef {
   name: string;
@@ -55,6 +55,9 @@ interface DataBookAPI {
   resolveRelation(targetTable: string, ids: unknown[], displayColumn: string): Promise<Record<string, string>>;
   searchRelation(targetTable: string, displayColumn: string, searchText: string): Promise<{ id: string; display: string }[]>;
   computeRollup(table: string, rowId: unknown, config: Record<string, unknown>): Promise<unknown>;
+
+  getViewFilterSort(itemName: string, itemKind: string, viewType: string): Promise<ViewFilterSort | null>;
+  setViewFilterSort(itemName: string, itemKind: string, viewType: string, config: ViewFilterSort): Promise<void>;
 }
 
 declare global {

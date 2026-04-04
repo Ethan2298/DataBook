@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
+import FilterSortBar from "./components/FilterSortBar";
 import TableView from "./components/TableView";
 import KanbanView from "./components/KanbanView";
 import CalendarView from "./components/CalendarView";
@@ -8,7 +9,8 @@ import EmptyState from "./components/EmptyState";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ColumnPicker from "./components/ColumnPicker";
 import api from "./api";
-import type { QueryPage, Row, ViewType, ViewConfig, ActiveItem, ColumnInfo, ColumnOptionsMap, ColumnMetadataMap } from "./data";
+import { applyFilterSort } from "./filter-sort";
+import type { QueryPage, Row, ViewType, ViewConfig, ActiveItem, ColumnInfo, ColumnOptionsMap, ColumnMetadataMap, FilterGroup, SortRule } from "./data";
 
 export default function App() {
   // Database state
@@ -25,6 +27,16 @@ export default function App() {
   const [columnOptions, setColumnOptions] = useState<ColumnOptionsMap>({});
   const [viewConfig, setViewConfig] = useState<ViewConfig>({});
   const [columnMetadata, setColumnMetadata] = useState<ColumnMetadataMap>({});
+
+  // Filter & sort state
+  const [filters, setFilters] = useState<FilterGroup>({ conjunction: "and", rules: [] });
+  const [sorts, setSorts] = useState<SortRule[]>([]);
+
+  // Computed filtered/sorted rows
+  const filteredRows = useMemo(
+    () => applyFilterSort(rows, { filters, sorts }, columns),
+    [rows, filters, sorts, columns]
+  );
 
   // Ref to read latest activeItem inside effects without re-subscribing
   const activeItemRef = useRef(activeItem);
@@ -122,10 +134,11 @@ export default function App() {
       // Auto-select: first query page, or a SELECT * from first table
       if (pages.length > 0) {
         const first = pages[0];
+        const vt = (first.view_type as ViewType) || "table";
         const item: ActiveItem = {
           kind: "query_page",
           name: first.name,
-          viewType: (first.view_type as ViewType) || "table",
+          viewType: vt,
           sql: first.query,
         };
         setActiveItem(item);
@@ -156,6 +169,12 @@ export default function App() {
           setColumns([]);
           setColumnMetadata({});
         }
+        // Load persisted filter/sort config
+        try {
+          const saved = await api.getViewFilterSort(first.name, "query_page", vt);
+          if (saved) { setFilters(saved.filters); setSorts(saved.sorts); }
+          else { setFilters({ conjunction: "and", rules: [] }); setSorts([]); }
+        } catch { setFilters({ conjunction: "and", rules: [] }); setSorts([]); }
       } else if (tbls.length > 0) {
         // Fallback: show first table raw
         const tableName = tbls[0];
@@ -170,11 +189,19 @@ export default function App() {
         setColumns(cols);
         setRows(result);
         setColumnMetadata(meta);
+        // Load persisted filter/sort config
+        try {
+          const saved = await api.getViewFilterSort(tableName, "table", "table");
+          if (saved) { setFilters(saved.filters); setSorts(saved.sorts); }
+          else { setFilters({ conjunction: "and", rules: [] }); setSorts([]); }
+        } catch { setFilters({ conjunction: "and", rules: [] }); setSorts([]); }
       } else {
         setActiveItem(null);
         setRows([]);
         setColumns([]);
         setColumnMetadata({});
+        setFilters({ conjunction: "and", rules: [] });
+        setSorts([]);
       }
     } catch (err) {
       setError(String(err));
@@ -244,6 +271,13 @@ export default function App() {
       setColumnOptions(colOpts);
       setColumnMetadata(meta);
       setError(null);
+
+      // Load persisted filter/sort config
+      try {
+        const saved = await api.getViewFilterSort(tableName, "table", "table");
+        if (saved) { setFilters(saved.filters); setSorts(saved.sorts); }
+        else { setFilters({ conjunction: "and", rules: [] }); setSorts([]); }
+      } catch { setFilters({ conjunction: "and", rules: [] }); setSorts([]); }
     } catch (err) {
       setError(String(err));
       setRows([]);
@@ -253,10 +287,11 @@ export default function App() {
 
   // Select a query page to view
   const selectQueryPage = useCallback(async (page: QueryPage) => {
+    const viewType = (page.view_type as ViewType) || "table";
     const item: ActiveItem = {
       kind: "query_page",
       name: page.name,
-      viewType: (page.view_type as ViewType) || "table",
+      viewType,
       sql: page.query,
     };
     setActiveItem(item);
@@ -312,6 +347,13 @@ export default function App() {
       const colOpts = await api.getAllColumnOptions();
       setColumnOptions(colOpts);
       setError(null);
+
+      // Load persisted filter/sort config
+      try {
+        const saved = await api.getViewFilterSort(page.name, "query_page", viewType);
+        if (saved) { setFilters(saved.filters); setSorts(saved.sorts); }
+        else { setFilters({ conjunction: "and", rules: [] }); setSorts([]); }
+      } catch { setFilters({ conjunction: "and", rules: [] }); setSorts([]); }
     } catch (err) {
       setError(String(err));
       setRows([]);
@@ -320,10 +362,16 @@ export default function App() {
   }, []);
 
   // Change view type for active item
-  const changeView = useCallback((viewType: ViewType) => {
-    if (activeItem) {
-      setActiveItem({ ...activeItem, viewType });
-    }
+  const changeView = useCallback(async (viewType: ViewType) => {
+    if (!activeItem) return;
+    setActiveItem({ ...activeItem, viewType });
+
+    // Load persisted filter/sort config for the new view type
+    try {
+      const saved = await api.getViewFilterSort(activeItem.name, activeItem.kind, viewType);
+      if (saved) { setFilters(saved.filters); setSorts(saved.sorts); }
+      else { setFilters({ conjunction: "and", rules: [] }); setSorts([]); }
+    } catch { setFilters({ conjunction: "and", rules: [] }); setSorts([]); }
   }, [activeItem]);
 
   // Refresh current data
@@ -455,6 +503,28 @@ export default function App() {
     }
   }, [activeItem]);
 
+  // Debounced persistence of filter/sort config.
+  // We use a flag to skip saves triggered by programmatic loads (selectTable,
+  // selectQueryPage, changeView, selectDb) and only persist user-driven changes.
+  const filterSortUserChange = useRef(false);
+  const handleFiltersChange = useCallback((f: FilterGroup) => {
+    filterSortUserChange.current = true;
+    setFilters(f);
+  }, []);
+  const handleSortsChange = useCallback((s: SortRule[]) => {
+    filterSortUserChange.current = true;
+    setSorts(s);
+  }, []);
+
+  useEffect(() => {
+    if (!activeItem || !currentDb || !filterSortUserChange.current) return;
+    filterSortUserChange.current = false;
+    const timer = setTimeout(() => {
+      api.setViewFilterSort(activeItem.name, activeItem.kind, activeItem.viewType, { filters, sorts }).catch(() => {});
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [filters, sorts, activeItem, currentDb]);
+
   // Derive column names for kanban/calendar views
   const colNames = useMemo(() => {
     if (columns.length > 0) return columns.map((c) => c.name);
@@ -541,6 +611,15 @@ export default function App() {
               onCreateQueryPage={createQueryPage}
               onRefresh={refresh}
             />
+            <FilterSortBar
+              columns={columns}
+              columnOptions={columnOptions}
+              activeTableName={activeItem.name}
+              filters={filters}
+              sorts={sorts}
+              onFiltersChange={handleFiltersChange}
+              onSortsChange={handleSortsChange}
+            />
             {error && <div className="error-bar">{error}</div>}
             {activeItem.viewType === "kanban" && colNames.length > 0 && (
               <div className="view-config-bar">
@@ -576,7 +655,7 @@ export default function App() {
             )}
             {activeItem.viewType === "table" && (
               <TableView
-                rows={rows}
+                rows={filteredRows}
                 columns={columns}
                 activeItem={activeItem}
                 columnOptions={columnOptions}
@@ -593,7 +672,7 @@ export default function App() {
             )}
             {activeItem.viewType === "kanban" && (
               <KanbanView
-                rows={rows}
+                rows={filteredRows}
                 groupByCol={resolvedConfig.groupByCol}
                 titleCol={resolvedConfig.titleCol}
                 columns={colNames}
@@ -612,7 +691,7 @@ export default function App() {
                 : null;
               return (
                 <CalendarView
-                  rows={rows}
+                  rows={filteredRows}
                   dateCol={resolvedConfig.dateCol}
                   titleCol={resolvedConfig.titleCol}
                   columnOptions={columnOptions}
