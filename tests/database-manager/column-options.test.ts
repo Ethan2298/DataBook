@@ -39,7 +39,7 @@ describe("addColumnOption", () => {
     manager.addColumnOption("tasks", "status", "Todo", "#E03E3E");
     expect(() =>
       manager.addColumnOption("tasks", "status", "Todo", "#2383E2")
-    ).toThrow();
+    ).toThrow("UNIQUE constraint failed");
   });
 });
 

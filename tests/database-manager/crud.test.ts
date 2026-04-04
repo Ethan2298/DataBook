@@ -47,7 +47,7 @@ describe("insertRows", () => {
     manager.insertRows("users", [
       { name: "Alice", email: "alice@test.com", age: 30 },
     ]);
-    const rows = manager.query("SELECT * FROM users") as any[];
+    const rows = manager.query("SELECT * FROM users");
     expect(rows).toHaveLength(1);
     expect(rows[0].name).toBe("Alice");
     expect(rows[0].email).toBe("alice@test.com");
@@ -57,7 +57,7 @@ describe("insertRows", () => {
   it("throws when inserting into non-existent table", () => {
     expect(() =>
       manager.insertRows("nonexistent", [{ name: "Alice" }])
-    ).toThrow();
+    ).toThrow("no such table");
   });
 
   it("handles various data types (text, integer, real, null)", () => {
@@ -71,7 +71,7 @@ describe("insertRows", () => {
     manager.insertRows("mixed", [
       { id: 1, text_val: "hello", int_val: 42, real_val: 3.14, null_val: null },
     ]);
-    const rows = manager.query("SELECT * FROM mixed") as any[];
+    const rows = manager.query("SELECT * FROM mixed");
     expect(rows[0].text_val).toBe("hello");
     expect(rows[0].int_val).toBe(42);
     expect(rows[0].real_val).toBeCloseTo(3.14);
@@ -98,7 +98,7 @@ describe("updateRows", () => {
     const rows = manager.query(
       "SELECT age FROM users WHERE name = ?",
       ["Alice"]
-    ) as any[];
+    );
     expect(rows[0].age).toBe(31);
   });
 
@@ -132,7 +132,7 @@ describe("updateRows", () => {
     const rows = manager.query(
       "SELECT * FROM users WHERE email = ?",
       ["alice@test.com"]
-    ) as any[];
+    );
     expect(rows[0].name).toBe("Alicia");
     expect(rows[0].age).toBe(31);
   });
@@ -149,7 +149,7 @@ describe("deleteRows", () => {
   it("deletes matching rows and returns change count", () => {
     const count = manager.deleteRows("users", "name = ?", ["Alice"]);
     expect(count).toBe(1);
-    const rows = manager.query("SELECT * FROM users") as any[];
+    const rows = manager.query("SELECT * FROM users");
     expect(rows).toHaveLength(1);
     expect(rows[0].name).toBe("Bob");
   });
@@ -162,7 +162,7 @@ describe("deleteRows", () => {
   it("supports parameterized WHERE clause", () => {
     const count = manager.deleteRows("users", "age < ?", [28]);
     expect(count).toBe(1); // Bob (age 25) deleted
-    const rows = manager.query("SELECT * FROM users") as any[];
+    const rows = manager.query("SELECT * FROM users");
     expect(rows).toHaveLength(1);
     expect(rows[0].name).toBe("Alice");
   });
@@ -176,13 +176,13 @@ describe("CRUD integration", () => {
 
     manager.updateRows("users", { name: "Alicia" }, "name = ?", ["Alice"]);
 
-    const rows = manager.query("SELECT * FROM users") as any[];
+    const rows = manager.query("SELECT * FROM users");
     expect(rows).toHaveLength(1);
     expect(rows[0].name).toBe("Alicia");
 
     manager.deleteRows("users", "1 = 1");
 
-    const remaining = manager.query("SELECT * FROM users") as any[];
+    const remaining = manager.query("SELECT * FROM users");
     expect(remaining).toHaveLength(0);
   });
 
@@ -197,10 +197,10 @@ describe("CRUD integration", () => {
         { name: "Bob", email: "bob@test.com", age: 25 },
         { name: "Charlie", email: "alice@test.com", age: 35 }, // duplicate email
       ])
-    ).toThrow();
+    ).toThrow("UNIQUE constraint failed");
 
     // Transaction should have rolled back - only original Alice remains
-    const rows = manager.query("SELECT * FROM users") as any[];
+    const rows = manager.query("SELECT * FROM users");
     expect(rows).toHaveLength(1);
     expect(rows[0].name).toBe("Alice");
   });

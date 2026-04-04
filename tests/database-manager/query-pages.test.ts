@@ -45,7 +45,7 @@ describe("createQueryPage", () => {
     manager.createQueryPage("Dupe", "SELECT 1", "table");
     expect(() =>
       manager.createQueryPage("Dupe", "SELECT 2", "kanban")
-    ).toThrow();
+    ).toThrow("UNIQUE constraint failed");
   });
 
   it("throws when no database selected", () => {

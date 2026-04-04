@@ -27,7 +27,7 @@ afterEach(() => {
 
 describe("query", () => {
   it("SELECT returns array of row objects", () => {
-    const rows = manager.query("SELECT * FROM items") as any[];
+    const rows = manager.query("SELECT * FROM items");
     expect(rows).toHaveLength(3);
     expect(rows[0]).toHaveProperty("name");
     expect(rows[0]).toHaveProperty("price");
@@ -37,7 +37,7 @@ describe("query", () => {
     const rows = manager.query(
       "SELECT * FROM items WHERE price > ?",
       [10]
-    ) as any[];
+    );
     expect(rows).toHaveLength(1);
     expect(rows[0].name).toBe("Gadget");
   });
@@ -46,7 +46,7 @@ describe("query", () => {
     const result = manager.query(
       "INSERT INTO items (name, price) VALUES (?, ?)",
       ["Thingamajig", 14.99]
-    ) as any[];
+    );
     expect(result).toHaveLength(1);
     expect(result[0].changes).toBe(1);
     expect(result[0].lastInsertRowid).toBeDefined();
@@ -55,7 +55,7 @@ describe("query", () => {
     const rows = manager.query(
       "SELECT name FROM items WHERE name = ?",
       ["Thingamajig"]
-    ) as any[];
+    );
     expect(rows).toHaveLength(1);
   });
 
@@ -63,7 +63,7 @@ describe("query", () => {
     const result = manager.query(
       "UPDATE items SET price = ? WHERE name = ?",
       [11.99, "Widget"]
-    ) as any[];
+    );
     expect(result[0].changes).toBe(1);
   });
 
@@ -71,14 +71,14 @@ describe("query", () => {
     const result = manager.query(
       "DELETE FROM items WHERE name = ?",
       ["Doohickey"]
-    ) as any[];
+    );
     expect(result[0].changes).toBe(1);
   });
 
   it("DDL (CREATE TABLE) works via query", () => {
     const result = manager.query(
       "CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY, message TEXT)"
-    ) as any[];
+    );
     expect(result[0].changes).toBe(0);
     expect(manager.listTables()).toContain("logs");
   });
@@ -92,7 +92,7 @@ describe("query", () => {
   });
 
   it("throws on invalid SQL", () => {
-    expect(() => manager.query("NOT VALID SQL")).toThrow();
+    expect(() => manager.query("NOT VALID SQL")).toThrow("syntax error");
   });
 
   it("throws when no database selected", () => {
@@ -101,5 +101,27 @@ describe("query", () => {
       "No database selected"
     );
     freshCleanup();
+  });
+
+  it("handles SQL injection attempt safely via parameterized query", () => {
+    const malicious = "'; DROP TABLE items; --";
+
+    // Insert the malicious string as a parameter value (not raw SQL)
+    manager.insertRows("items", [{ name: malicious, price: 0 }]);
+
+    // Query using the malicious string as a parameter
+    const rows = manager.query(
+      "SELECT * FROM items WHERE name = ?",
+      [malicious]
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].name).toBe(malicious);
+
+    // Confirm the items table still exists and has all original rows + the new one
+    const allRows = manager.query("SELECT * FROM items");
+    expect(allRows).toHaveLength(4);
+
+    // Confirm table is still fully functional
+    expect(manager.listTables()).toContain("items");
   });
 });

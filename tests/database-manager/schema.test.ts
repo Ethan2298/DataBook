@@ -91,7 +91,7 @@ describe("createTable", () => {
     manager.insertRows("items", [{ id: 1, status: "active", code: "ABC" }]);
     expect(() =>
       manager.insertRows("items", [{ id: 2, status: "active", code: "ABC" }])
-    ).toThrow(); // UNIQUE constraint violation
+    ).toThrow("UNIQUE constraint failed"); // UNIQUE constraint violation
   });
 
   it("uses IF NOT EXISTS (no error on duplicate call)", () => {
@@ -182,7 +182,7 @@ describe("alterTable", () => {
       manager.alterTable("items", [
         { type: "add_column", column: "name", columnType: "TEXT" },
       ])
-    ).toThrow(); // column "name" already exists
+    ).toThrow("duplicate column name"); // column "name" already exists
   });
 
   it("throws when dropping non-existent column", () => {
@@ -190,7 +190,7 @@ describe("alterTable", () => {
       manager.alterTable("items", [
         { type: "drop_column", column: "nonexistent" },
       ])
-    ).toThrow();
+    ).toThrow("no such column");
   });
 
   it("throws when renaming non-existent column", () => {
@@ -198,7 +198,7 @@ describe("alterTable", () => {
       manager.alterTable("items", [
         { type: "rename_column", column: "nonexistent", newName: "other" },
       ])
-    ).toThrow();
+    ).toThrow("no such column");
   });
 });
 

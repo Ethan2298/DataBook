@@ -247,14 +247,14 @@ export class DatabaseManager {
 
   // ── Query ────────────────────────────────────────────────────────────────────
 
-  query(sql: string, params: unknown[] = []): unknown[] {
+  query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): T[] {
     const db = this.getDb();
     const stmt = db.prepare(sql);
     if (stmt.reader) {
-      return stmt.all(params);
+      return stmt.all(params) as T[];
     } else {
       const result = stmt.run(params);
-      return [{ changes: result.changes, lastInsertRowid: result.lastInsertRowid }];
+      return [{ changes: result.changes, lastInsertRowid: result.lastInsertRowid }] as T[];
     }
   }
 
