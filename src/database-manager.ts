@@ -317,7 +317,29 @@ export class DatabaseManager {
   insertRows(table: string, rows: Record<string, unknown>[]): number {
     if (rows.length === 0) return 0;
     const db = this.getDb();
-    const keys = Object.keys(rows[0]);
+    const meta = this.getAllColumnMetadata(table);
+    const now = new Date().toISOString();
+
+    // Auto-fill columns based on field type metadata
+    const enrichedRows = rows.map((row) => {
+      const enriched = { ...row };
+      for (const [col, m] of Object.entries(meta)) {
+        if (m.field_type === "created_time" && enriched[col] == null) {
+          enriched[col] = now;
+        } else if (m.field_type === "created_by" && enriched[col] == null) {
+          enriched[col] = (m.config.defaultValue as string) ?? "Local User";
+        } else if (m.field_type === "last_edited_time") {
+          enriched[col] = now;
+        } else if (m.field_type === "last_edited_by") {
+          enriched[col] = (m.config.defaultValue as string) ?? "Local User";
+        } else if (m.field_type === "unique_id" && enriched[col] == null) {
+          enriched[col] = this.generateUniqueId(table, col, m.config);
+        }
+      }
+      return enriched;
+    });
+
+    const keys = Object.keys(enrichedRows[0]);
     const placeholders = keys.map(() => "?").join(", ");
     const cols = keys.map((k) => `"${k}"`).join(", ");
     const stmt = db.prepare(
@@ -331,7 +353,7 @@ export class DatabaseManager {
       }
       return count;
     });
-    return insert(rows) as number;
+    return insert(enrichedRows) as number;
   }
 
   updateRows(
@@ -341,10 +363,23 @@ export class DatabaseManager {
     params: unknown[] = []
   ): number {
     const db = this.getDb();
-    const setClauses = Object.keys(set)
+    const meta = this.getAllColumnMetadata(table);
+    const now = new Date().toISOString();
+
+    // Auto-fill last_edited columns
+    const enrichedSet = { ...set };
+    for (const [col, m] of Object.entries(meta)) {
+      if (m.field_type === "last_edited_time") {
+        enrichedSet[col] = now;
+      } else if (m.field_type === "last_edited_by") {
+        enrichedSet[col] = (m.config.defaultValue as string) ?? "Local User";
+      }
+    }
+
+    const setClauses = Object.keys(enrichedSet)
       .map((k) => `"${k}" = ?`)
       .join(", ");
-    const setValues = Object.values(set);
+    const setValues = Object.values(enrichedSet);
     const stmt = db.prepare(
       `UPDATE "${table}" SET ${setClauses} WHERE ${where}`
     );
@@ -644,6 +679,95 @@ export class DatabaseManager {
     tx();
   }
 
+  private generateUniqueId(table: string, column: string, config: Record<string, unknown>): string {
+    const db = this.getDb();
+    const prefix = (config.prefix as string) ?? "";
+    const digits = (config.digits as number) ?? 0;
+    // Get current max numeric value
+    const row = db
+      .prepare(`SELECT MAX(CAST(REPLACE("${column.replace(/"/g, '""')}", ?, '') AS INTEGER)) as max_val FROM "${table.replace(/"/g, '""')}"`)
+      .get(prefix) as { max_val: number | null } | undefined;
+    const next = (row?.max_val ?? 0) + 1;
+    if (digits > 0) {
+      return `${prefix}${String(next).padStart(digits, "0")}`;
+    }
+    return `${prefix}${next}`;
+  }
+
+  resolveRelation(targetTable: string, ids: unknown[], displayColumn: string): Record<string, string> {
+    const db = this.getDb();
+    if (ids.length === 0) return {};
+    const placeholders = ids.map(() => "?").join(", ");
+    const rows = db
+      .prepare(`SELECT rowid, "${displayColumn.replace(/"/g, '""')}" as display FROM "${targetTable.replace(/"/g, '""')}" WHERE rowid IN (${placeholders})`)
+      .all(ids) as { rowid: number; display: unknown }[];
+    const result: Record<string, string> = {};
+    for (const row of rows) {
+      result[String(row.rowid)] = row.display == null ? "" : String(row.display);
+    }
+    return result;
+  }
+
+  computeRollup(table: string, rowId: unknown, config: Record<string, unknown>): unknown {
+    const db = this.getDb();
+    const relationColumn = config.relationColumn as string;
+    const targetColumn = config.targetColumn as string;
+    const aggregation = (config.aggregation as string) ?? "count";
+
+    if (!relationColumn || !targetColumn) return null;
+
+    // Get the relation metadata to find target table
+    const relationMeta = this.getColumnMetadata(table, relationColumn);
+    if (!relationMeta || relationMeta.field_type !== "relation") return null;
+    const targetTable = relationMeta.config.targetTable as string;
+    if (!targetTable) return null;
+
+    // Get relation IDs from this row
+    // Find pk column
+    const pkInfo = db.prepare(`PRAGMA table_info("${table.replace(/"/g, '""')}")`).all() as { name: string; pk: number }[];
+    const pkCol = pkInfo.find((c) => c.pk)?.name ?? "rowid";
+    const row = db.prepare(`SELECT "${relationColumn.replace(/"/g, '""')}" FROM "${table.replace(/"/g, '""')}" WHERE "${pkCol.replace(/"/g, '""')}" = ?`).get(rowId) as Record<string, unknown> | undefined;
+    if (!row) return null;
+
+    const relVal = row[relationColumn];
+    let ids: unknown[] = [];
+    if (relVal != null) {
+      try { ids = JSON.parse(String(relVal)); } catch { ids = String(relVal).split(",").map((s) => s.trim()).filter(Boolean); }
+    }
+    if (ids.length === 0) return aggregation === "count" ? 0 : null;
+
+    const placeholders = ids.map(() => "?").join(", ");
+    const safeTargetCol = targetColumn.replace(/"/g, '""');
+    const safeTargetTable = targetTable.replace(/"/g, '""');
+
+    switch (aggregation) {
+      case "count":
+        return ids.length;
+      case "sum": {
+        const r = db.prepare(`SELECT SUM("${safeTargetCol}") as val FROM "${safeTargetTable}" WHERE rowid IN (${placeholders})`).get(...ids) as { val: number } | undefined;
+        return r?.val ?? 0;
+      }
+      case "average": {
+        const r = db.prepare(`SELECT AVG("${safeTargetCol}") as val FROM "${safeTargetTable}" WHERE rowid IN (${placeholders})`).get(...ids) as { val: number } | undefined;
+        return r?.val ?? 0;
+      }
+      case "min": {
+        const r = db.prepare(`SELECT MIN("${safeTargetCol}") as val FROM "${safeTargetTable}" WHERE rowid IN (${placeholders})`).get(...ids) as { val: unknown } | undefined;
+        return r?.val ?? null;
+      }
+      case "max": {
+        const r = db.prepare(`SELECT MAX("${safeTargetCol}") as val FROM "${safeTargetTable}" WHERE rowid IN (${placeholders})`).get(...ids) as { val: unknown } | undefined;
+        return r?.val ?? null;
+      }
+      case "show_all": {
+        const rows = db.prepare(`SELECT "${safeTargetCol}" as val FROM "${safeTargetTable}" WHERE rowid IN (${placeholders})`).all(...ids) as { val: unknown }[];
+        return rows.map((r) => r.val).join(", ");
+      }
+      default:
+        return null;
+    }
+  }
+
   close() {
     this.currentDb?.close();
     this.metaDb.close();
@@ -668,7 +792,7 @@ export interface ColumnOption {
   sort_order: number;
 }
 
-export type FieldType = 'text' | 'number' | 'select' | 'multi_select' | 'date' | 'checkbox' | 'url' | 'email';
+export type FieldType = 'text' | 'number' | 'select' | 'multi_select' | 'date' | 'checkbox' | 'url' | 'email' | 'phone' | 'status' | 'person' | 'file' | 'relation' | 'rollup' | 'created_time' | 'created_by' | 'last_edited_time' | 'last_edited_by' | 'unique_id';
 
 export interface ColumnMetadata {
   column: string;

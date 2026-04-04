@@ -6,10 +6,21 @@ const FIELD_TYPE_OPTIONS: { value: FieldType; label: string; icon: string }[] = 
   { value: "number", label: "Number", icon: "#" },
   { value: "select", label: "Select", icon: "▾" },
   { value: "multi_select", label: "Multi Select", icon: "☰" },
+  { value: "status", label: "Status", icon: "◉" },
   { value: "date", label: "Date", icon: "📅" },
   { value: "checkbox", label: "Checkbox", icon: "☑" },
   { value: "url", label: "URL", icon: "🔗" },
   { value: "email", label: "Email", icon: "@" },
+  { value: "phone", label: "Phone", icon: "📞" },
+  { value: "person", label: "Person", icon: "👤" },
+  { value: "file", label: "Files & Media", icon: "📎" },
+  { value: "relation", label: "Relation", icon: "↗" },
+  { value: "rollup", label: "Rollup", icon: "Σ" },
+  { value: "created_time", label: "Created Time", icon: "⏱" },
+  { value: "created_by", label: "Created By", icon: "✎" },
+  { value: "last_edited_time", label: "Edited Time", icon: "⏱" },
+  { value: "last_edited_by", label: "Edited By", icon: "✎" },
+  { value: "unique_id", label: "ID", icon: "⌗" },
 ];
 
 interface FieldTypePickerProps {

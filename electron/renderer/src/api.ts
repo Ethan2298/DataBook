@@ -51,6 +51,9 @@ interface DataBookAPI {
   getColumnMetadata(table: string, column: string): Promise<ColumnMetadata | null>;
   getAllColumnMetadata(table?: string): Promise<ColumnMetadataMap>;
   removeColumnMetadata(table: string, column: string): Promise<void>;
+
+  resolveRelation(targetTable: string, ids: unknown[], displayColumn: string): Promise<Record<string, string>>;
+  computeRollup(table: string, rowId: unknown, config: Record<string, unknown>): Promise<unknown>;
 }
 
 declare global {

@@ -51,4 +51,8 @@ contextBridge.exposeInMainWorld('databook', {
   getColumnMetadata: (table, column) => ipcRenderer.invoke('db:getColumnMetadata', table, column),
   getAllColumnMetadata: (table) => ipcRenderer.invoke('db:getAllColumnMetadata', table),
   removeColumnMetadata: (table, column) => ipcRenderer.invoke('db:removeColumnMetadata', table, column),
+
+  // Relation / Rollup
+  resolveRelation: (targetTable, ids, displayColumn) => ipcRenderer.invoke('db:resolveRelation', targetTable, ids, displayColumn),
+  computeRollup: (table, rowId, config) => ipcRenderer.invoke('db:computeRollup', table, rowId, config),
 });

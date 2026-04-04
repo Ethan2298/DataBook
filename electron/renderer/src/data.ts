@@ -39,7 +39,7 @@ export interface ColumnOption {
 // Map of "table.column" -> ColumnOption[]
 export type ColumnOptionsMap = Record<string, ColumnOption[]>;
 
-export type FieldType = 'text' | 'number' | 'select' | 'multi_select' | 'date' | 'checkbox' | 'url' | 'email';
+export type FieldType = 'text' | 'number' | 'select' | 'multi_select' | 'date' | 'checkbox' | 'url' | 'email' | 'phone' | 'status' | 'person' | 'file' | 'relation' | 'rollup' | 'created_time' | 'created_by' | 'last_edited_time' | 'last_edited_by' | 'unique_id';
 
 export interface ColumnMetadata {
   column: string;

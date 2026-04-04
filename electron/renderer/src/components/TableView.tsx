@@ -346,11 +346,71 @@ export default function TableView({ rows, columns, activeItem, columnOptions, co
                     </div>
                   );
                 }
+                // Status: grouped select
+                if (meta.field_type === "status") {
+                  const groups = (meta.config.groups as { name: string; options: string[] }[]) ?? [];
+                  const allOptions = groups.flatMap((g) => g.options);
+                  return (
+                    <div key={col} className="td">
+                      <select
+                        className="status-select"
+                        value={String(newRowValues[col] ?? "")}
+                        onChange={(e) => setNewRowValues((prev) => ({ ...prev, [col]: e.target.value }))}
+                      >
+                        <option value="">—</option>
+                        {groups.map((g) => (
+                          <optgroup key={g.name} label={g.name}>
+                            {g.options.map((opt) => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </optgroup>
+                        ))}
+                        {allOptions.length === 0 && <option disabled>No options configured</option>}
+                      </select>
+                    </div>
+                  );
+                }
+                // Person: dropdown of configured names
+                if (meta.field_type === "person") {
+                  const people = (meta.config.people as { name: string }[]) ?? [];
+                  return (
+                    <div key={col} className="td">
+                      <select
+                        className="status-select"
+                        value={String(newRowValues[col] ?? "")}
+                        onChange={(e) => setNewRowValues((prev) => ({ ...prev, [col]: e.target.value }))}
+                      >
+                        <option value="">—</option>
+                        {people.map((p) => (
+                          <option key={p.name} value={p.name}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                }
+                // Read-only auto types: show "auto" label
+                if (["created_time", "created_by", "last_edited_time", "last_edited_by", "unique_id", "rollup"].includes(meta.field_type)) {
+                  return (
+                    <div key={col} className="td">
+                      <span className="cell-text auto-text">auto</span>
+                    </div>
+                  );
+                }
+                // Determine input type for remaining editable types
+                const inputType = (() => {
+                  switch (meta.field_type) {
+                    case "number": return "number";
+                    case "email": return "email";
+                    case "url": return "url";
+                    case "phone": return "tel";
+                    default: return "text";
+                  }
+                })();
                 return (
                   <div key={col} className="td">
                     <input
                       className="cell-edit-input"
-                      type={meta.field_type === "number" ? "number" : meta.field_type === "email" ? "email" : meta.field_type === "url" ? "url" : "text"}
+                      type={inputType}
                       placeholder={col}
                       value={String(newRowValues[col] ?? "")}
                       onChange={(e) => setNewRowValues((prev) => ({ ...prev, [col]: e.target.value }))}

@@ -1146,6 +1146,163 @@ body {
   font-size: 12px;
 }
 
+/* ── Phone Cell ── */
+
+.cell-phone a {
+  color: #2383E2;
+  text-decoration: none;
+  font-size: 13px;
+}
+.cell-phone a:hover {
+  text-decoration: underline;
+}
+
+/* ── Status Grouped Dropdown ── */
+
+.status-grouped-dropdown {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.status-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 2px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #9B9A97;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ── Person Cell ── */
+
+.person-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.person-initial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.person-initial-sm {
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+}
+
+.person-name {
+  font-size: 13px;
+  color: #ECECEA;
+}
+
+/* ── File Cell ── */
+
+.cell-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.file-thumbnail {
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.file-name {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-name a {
+  color: #2383E2;
+  text-decoration: none;
+}
+.file-name a:hover {
+  text-decoration: underline;
+}
+
+/* ── Relation Cell ── */
+
+.cell-relation {
+  min-height: 28px;
+}
+
+.relation-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.relation-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  background: rgba(35, 131, 226, 0.15);
+  color: #2383E2;
+  border-radius: 3px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.relation-dropdown {
+  min-width: 200px;
+}
+
+.relation-search {
+  width: 100%;
+  padding: 6px 10px;
+  background: #2A2A2A;
+  border: none;
+  border-bottom: 1px solid #363636;
+  color: #ECECEA;
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+}
+.relation-search::placeholder {
+  color: #5A5A58;
+}
+
+/* ── Rollup / Read-only Cell ── */
+
+.cell-readonly {
+  color: #9B9A97;
+  font-style: italic;
+}
+
+.cell-rollup {
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Unique ID Cell ── */
+
+.unique-id-cell {
+  font-family: 'SF Mono', 'Fira Code', 'Fira Mono', monospace;
+  font-size: 12px;
+  color: #9B9A97;
+  font-style: normal;
+}
+
 /* ── Field Type Picker ── */
 
 .field-type-btn {

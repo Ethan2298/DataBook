@@ -118,6 +118,8 @@ server.tool(
 
 const FIELD_TYPES = [
   "text", "number", "select", "multi_select", "date", "checkbox", "url", "email",
+  "phone", "status", "person", "file", "relation", "rollup",
+  "created_time", "created_by", "last_edited_time", "last_edited_by", "unique_id",
 ] as const;
 
 const ColumnDefSchema = z.object({
