@@ -5,7 +5,6 @@ import type {
   ColumnInfo,
   FilterGroup,
   FilterRule,
-  FilterOperator,
   SortRule,
   ViewFilterSort,
   ColumnCategory,

@@ -21,7 +21,6 @@ import type {
   FilterRule,
   FilterOperator,
   SortRule,
-  ColumnCategory,
 } from "../data";
 import { getColumnCategory, getOperatorsForCategory } from "../filter-sort";
 
