@@ -104,10 +104,10 @@ export default function DetailPanel({ row, columns, columnOptions, tableName, on
   return (
     <>
       <div className="detail-panel-backdrop" onClick={onClose} />
-      <div className="detail-panel" ref={panelRef}>
+      <div className="detail-panel" ref={panelRef} role="dialog" aria-label="Row Details">
         <div className="detail-panel-header">
-          <span className="detail-panel-title">Row Details</span>
-          <button className="detail-panel-close" onClick={onClose} title="Close">
+          <span className="detail-panel-title" id="detail-panel-title">Row Details</span>
+          <button className="detail-panel-close" onClick={onClose} title="Close" aria-label="Close detail panel">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />

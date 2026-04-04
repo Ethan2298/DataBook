@@ -3,6 +3,7 @@ import type { ViewType, ActiveItem } from "../data";
 
 interface TopBarProps {
   activeItem: ActiveItem;
+  loading: boolean;
   onViewChange: (view: ViewType) => void;
   onCreateQueryPage: (name: string, sql: string, viewType: string) => void;
   onRefresh: () => void;
@@ -47,16 +48,21 @@ const VIEW_OPTIONS: { type: ViewType; label: string; icon: JSX.Element }[] = [
   },
 ];
 
-export default function TopBar({ activeItem, onViewChange, onCreateQueryPage, onRefresh }: TopBarProps) {
+export default function TopBar({ activeItem, loading, onViewChange, onCreateQueryPage, onRefresh }: TopBarProps) {
   const [showSaveInput, setShowSaveInput] = useState(false);
   const [saveName, setSaveName] = useState("");
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const handleSave = () => {
-    if (saveName.trim()) {
-      onCreateQueryPage(saveName.trim(), activeItem.sql, activeItem.viewType);
-      setSaveName("");
-      setShowSaveInput(false);
+    const trimmed = saveName.trim();
+    if (!trimmed) {
+      setSaveError("View name is required");
+      return;
     }
+    setSaveError(null);
+    onCreateQueryPage(trimmed, activeItem.sql, activeItem.viewType);
+    setSaveName("");
+    setShowSaveInput(false);
   };
 
   return (
@@ -65,19 +71,29 @@ export default function TopBar({ activeItem, onViewChange, onCreateQueryPage, on
         <span className="topbar-title">{activeItem.name}</span>
         <span className="topbar-kind">{activeItem.kind === "table" ? "table" : activeItem.viewType}</span>
 
-        {VIEW_OPTIONS.map(({ type, label, icon }) => (
-          <button
-            key={type}
-            className={`tab ${activeItem.viewType === type ? "active" : ""}`}
-            onClick={() => onViewChange(type)}
-          >
-            {icon}
-            {label}
-          </button>
-        ))}
+        <div role="tablist" className="topbar-tabs">
+          {VIEW_OPTIONS.map(({ type, label, icon }) => (
+            <button
+              key={type}
+              role="tab"
+              aria-selected={activeItem.viewType === type}
+              className={`tab ${activeItem.viewType === type ? "active" : ""}`}
+              onClick={() => onViewChange(type)}
+            >
+              {icon}
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="topbar-right">
-        <button className="action-btn" onClick={onRefresh} title="Refresh">
+        <button
+          className="action-btn"
+          onClick={onRefresh}
+          disabled={loading}
+          title="Refresh"
+          aria-label="Refresh data"
+        >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 2v6h-6" />
             <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
@@ -88,7 +104,12 @@ export default function TopBar({ activeItem, onViewChange, onCreateQueryPage, on
         </button>
 
         {activeItem.kind === "table" && !showSaveInput && (
-          <button className="action-btn" onClick={() => setShowSaveInput(true)}>
+          <button
+            className="action-btn"
+            onClick={() => { setShowSaveInput(true); setSaveError(null); }}
+            disabled={loading}
+            aria-label="Save view"
+          >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
               <polyline points="17 21 17 13 7 13 7 21" />
@@ -102,16 +123,17 @@ export default function TopBar({ activeItem, onViewChange, onCreateQueryPage, on
           <div className="topbar-save-input">
             <input
               type="text"
-              className="sidebar-inline-input"
+              className={`sidebar-inline-input ${saveError ? "input-error" : ""}`}
               placeholder="View name..."
               value={saveName}
-              onChange={(e) => setSaveName(e.target.value)}
+              onChange={(e) => { setSaveName(e.target.value); setSaveError(null); }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleSave();
-                if (e.key === "Escape") setShowSaveInput(false);
+                if (e.key === "Escape") { setShowSaveInput(false); setSaveError(null); }
               }}
               autoFocus
             />
+            {saveError && <div className="validation-error">{saveError}</div>}
           </div>
         )}
       </div>
