@@ -38,7 +38,7 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const addToast = useCallback((message: string, type: ToastItem["type"] = "success") => {
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
-    setToasts((prev) => [...prev, { id, message, type }]);
+    setToasts((prev) => [...prev, { id, message, type }].slice(-5));
   }, []);
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -254,6 +254,7 @@ export default function App() {
   // Delete a database
   const deleteDb = useCallback(async (name: string) => {
     try {
+      setLoading(true);
       await api.deleteDatabase(name);
       setDatabases((prev) => prev.filter((d) => d !== name));
       if (currentDb === name) {
@@ -268,6 +269,8 @@ export default function App() {
     } catch (err) {
       setError(String(err));
       addToast(String(err), "error");
+    } finally {
+      setLoading(false);
     }
   }, [currentDb, addToast]);
 
@@ -401,7 +404,7 @@ export default function App() {
   // Change view type for active item
   const changeView = useCallback(async (viewType: ViewType) => {
     if (!activeItem) return;
-    setActiveItem({ ...activeItem, viewType });
+    setActiveItem((prev) => prev ? { ...prev, viewType } : prev);
 
     // Load persisted filter/sort config for the new view type
     try {
@@ -496,6 +499,7 @@ export default function App() {
   // Delete a row
   const deleteRow = useCallback(async (table: string, pkCol: string, pkVal: unknown) => {
     try {
+      setLoading(true);
       if (!columns.some((c) => c.name === pkCol)) {
         throw new Error(`Unknown column: ${pkCol}`);
       }
@@ -505,6 +509,8 @@ export default function App() {
     } catch (err) {
       setError(String(err));
       addToast(String(err), "error");
+    } finally {
+      setLoading(false);
     }
   }, [refresh, columns, addToast]);
 
@@ -524,6 +530,7 @@ export default function App() {
   // Delete query page
   const deleteQueryPage = useCallback(async (name: string) => {
     try {
+      setLoading(true);
       await api.deleteQueryPage(name);
       setQueryPages((prev) => prev.filter((p) => p.name !== name));
       if (activeItem?.kind === "query_page" && activeItem.name === name) {
@@ -535,12 +542,15 @@ export default function App() {
     } catch (err) {
       setError(String(err));
       addToast(String(err), "error");
+    } finally {
+      setLoading(false);
     }
   }, [activeItem, addToast]);
 
   // Drop a table
   const dropTable = useCallback(async (tableName: string) => {
     try {
+      setLoading(true);
       await api.dropTable(tableName);
       setTables((prev) => prev.filter((t) => t !== tableName));
       if (activeItem?.kind === "table" && activeItem.name === tableName) {
@@ -552,6 +562,8 @@ export default function App() {
     } catch (err) {
       setError(String(err));
       addToast(String(err), "error");
+    } finally {
+      setLoading(false);
     }
   }, [activeItem, addToast]);
 

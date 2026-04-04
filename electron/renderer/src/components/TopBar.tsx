@@ -71,12 +71,11 @@ export default function TopBar({ activeItem, loading, onViewChange, onCreateQuer
         <span className="topbar-title">{activeItem.name}</span>
         <span className="topbar-kind">{activeItem.kind === "table" ? "table" : activeItem.viewType}</span>
 
-        <div role="tablist" className="topbar-tabs">
+        <div role="group" aria-label="View type" className="topbar-tabs">
           {VIEW_OPTIONS.map(({ type, label, icon }) => (
             <button
               key={type}
-              role="tab"
-              aria-selected={activeItem.viewType === type}
+              aria-pressed={activeItem.viewType === type}
               className={`tab ${activeItem.viewType === type ? "active" : ""}`}
               onClick={() => onViewChange(type)}
             >

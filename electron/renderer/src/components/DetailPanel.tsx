@@ -104,7 +104,7 @@ export default function DetailPanel({ row, columns, columnOptions, tableName, on
   return (
     <>
       <div className="detail-panel-backdrop" onClick={onClose} />
-      <div className="detail-panel" ref={panelRef} role="dialog" aria-label="Row Details">
+      <div className="detail-panel" ref={panelRef} role="dialog" aria-labelledby="detail-panel-title">
         <div className="detail-panel-header">
           <span className="detail-panel-title" id="detail-panel-title">Row Details</span>
           <button className="detail-panel-close" onClick={onClose} title="Close" aria-label="Close detail panel">

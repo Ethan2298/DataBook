@@ -69,6 +69,7 @@ export default function Sidebar({
   }, [contextMenu]);
 
   const handleItemKeyDown = (e: React.KeyboardEvent, action: () => void) => {
+    if (loading) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       action();
@@ -91,7 +92,7 @@ export default function Sidebar({
                 role="button"
                 tabIndex={0}
                 className={`sidebar-item ${isActive ? "active" : ""}`}
-                aria-current={isActive ? "true" : undefined}
+                aria-current={isActive ? "page" : undefined}
                 onClick={() => onSelectTable(t)}
                 onKeyDown={(e) => handleItemKeyDown(e, () => onSelectTable(t))}
                 onContextMenu={(e) => handleContextMenu(e, "table", t)}
@@ -126,7 +127,7 @@ export default function Sidebar({
                 role="button"
                 tabIndex={0}
                 className={`sidebar-item ${isActive ? "active" : ""}`}
-                aria-current={isActive ? "true" : undefined}
+                aria-current={isActive ? "page" : undefined}
                 onClick={() => onSelectQueryPage(p)}
                 onKeyDown={(e) => handleItemKeyDown(e, () => onSelectQueryPage(p))}
                 onContextMenu={(e) => handleContextMenu(e, "query_page", p.name)}
@@ -188,7 +189,7 @@ export default function Sidebar({
               role="button"
               tabIndex={0}
               className={`sidebar-item ${isActive ? "active" : ""}`}
-              aria-current={isActive ? "true" : undefined}
+              aria-current={isActive ? "page" : undefined}
               onClick={() => onSelectDb(db)}
               onKeyDown={(e) => handleItemKeyDown(e, () => onSelectDb(db))}
               onContextMenu={(e) => handleContextMenu(e, "database", db)}
