@@ -60,6 +60,16 @@ export class DatabaseManager {
       );
       CREATE UNIQUE INDEX IF NOT EXISTS idx_column_order_unique
         ON column_order (database, "table", column_name);
+
+      CREATE TABLE IF NOT EXISTS view_filter_sort (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        database TEXT NOT NULL,
+        item_name TEXT NOT NULL,
+        item_kind TEXT NOT NULL,
+        view_type TEXT NOT NULL,
+        config TEXT NOT NULL DEFAULT '{}',
+        UNIQUE(database, item_name, item_kind, view_type)
+      );
     `);
   }
 
@@ -414,6 +424,32 @@ export class DatabaseManager {
       }
     });
     tx();
+  }
+
+  // ── View filter/sort persistence ──────��───────────────────────────────────
+
+  getViewFilterSort(itemName: string, itemKind: string, viewType: string): Record<string, unknown> | null {
+    const dbName = this.getCurrentDbName();
+    const row = this.metaDb
+      .prepare(
+        `SELECT config FROM view_filter_sort
+         WHERE database = ? AND item_name = ? AND item_kind = ? AND view_type = ?`
+      )
+      .get(dbName, itemName, itemKind, viewType) as { config: string } | undefined;
+    if (!row) return null;
+    try { return JSON.parse(row.config); } catch { return null; }
+  }
+
+  setViewFilterSort(itemName: string, itemKind: string, viewType: string, config: Record<string, unknown>): void {
+    const dbName = this.getCurrentDbName();
+    this.metaDb
+      .prepare(
+        `INSERT INTO view_filter_sort (database, item_name, item_kind, view_type, config)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(database, item_name, item_kind, view_type)
+         DO UPDATE SET config = excluded.config`
+      )
+      .run(dbName, itemName, itemKind, viewType, JSON.stringify(config));
   }
 
   close() {

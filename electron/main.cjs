@@ -69,6 +69,10 @@ handle('db:removeColumnOption', (m, table, column, value) => m.removeColumnOptio
 handle('db:getColumnOrder', (m, table) => m.getColumnOrder(table));
 handle('db:setColumnOrder', (m, table, columns) => m.setColumnOrder(table, columns));
 
+// ── View Filter/Sort ───────────────────────────────────────────────────────
+handle('db:getViewFilterSort', (m, itemName, itemKind, viewType) => m.getViewFilterSort(itemName, itemKind, viewType));
+handle('db:setViewFilterSort', (m, itemName, itemKind, viewType, config) => m.setViewFilterSort(itemName, itemKind, viewType, config));
+
 // ── File watcher for external changes (e.g. MCP server) ─────────────────────
 
 let mainWindow = null;

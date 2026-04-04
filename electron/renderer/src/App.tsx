@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
+import FilterSortBar from "./components/FilterSortBar";
 import TableView from "./components/TableView";
 import KanbanView from "./components/KanbanView";
 import CalendarView from "./components/CalendarView";
 import EmptyState from "./components/EmptyState";
 import ErrorBoundary from "./components/ErrorBoundary";
 import api from "./api";
-import type { QueryPage, Row, ViewType, ActiveItem, ColumnInfo, ColumnOptionsMap } from "./data";
+import { applyFilterSort } from "./filter-sort";
+import type { QueryPage, Row, ViewType, ActiveItem, ColumnInfo, ColumnOptionsMap, FilterGroup, SortRule } from "./data";
 
 export default function App() {
   // Database state
@@ -22,6 +24,16 @@ export default function App() {
   const [columns, setColumns] = useState<ColumnInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [columnOptions, setColumnOptions] = useState<ColumnOptionsMap>({});
+
+  // Filter & sort state
+  const [filters, setFilters] = useState<FilterGroup>({ conjunction: "and", rules: [] });
+  const [sorts, setSorts] = useState<SortRule[]>([]);
+
+  // Computed filtered/sorted rows
+  const filteredRows = useMemo(
+    () => applyFilterSort(rows, { filters, sorts }, columns),
+    [rows, filters, sorts, columns]
+  );
 
   // Ref to read latest activeItem inside effects without re-subscribing
   const activeItemRef = useRef(activeItem);
@@ -221,6 +233,13 @@ export default function App() {
       setRows(result);
       setColumnOptions(colOpts);
       setError(null);
+
+      // Load persisted filter/sort config
+      try {
+        const saved = await api.getViewFilterSort(tableName, "table", "table");
+        if (saved) { setFilters(saved.filters); setSorts(saved.sorts); }
+        else { setFilters({ conjunction: "and", rules: [] }); setSorts([]); }
+      } catch { setFilters({ conjunction: "and", rules: [] }); setSorts([]); }
     } catch (err) {
       setError(String(err));
       setRows([]);
@@ -230,10 +249,11 @@ export default function App() {
 
   // Select a query page to view
   const selectQueryPage = useCallback(async (page: QueryPage) => {
+    const viewType = (page.view_type as ViewType) || "table";
     const item: ActiveItem = {
       kind: "query_page",
       name: page.name,
-      viewType: (page.view_type as ViewType) || "table",
+      viewType,
       sql: page.query,
     };
     setActiveItem(item);
@@ -272,6 +292,13 @@ export default function App() {
       const colOpts = await api.getAllColumnOptions();
       setColumnOptions(colOpts);
       setError(null);
+
+      // Load persisted filter/sort config
+      try {
+        const saved = await api.getViewFilterSort(page.name, "query_page", viewType);
+        if (saved) { setFilters(saved.filters); setSorts(saved.sorts); }
+        else { setFilters({ conjunction: "and", rules: [] }); setSorts([]); }
+      } catch { setFilters({ conjunction: "and", rules: [] }); setSorts([]); }
     } catch (err) {
       setError(String(err));
       setRows([]);
@@ -399,6 +426,15 @@ export default function App() {
     }
   }, [activeItem]);
 
+  // Debounced persistence of filter/sort config
+  useEffect(() => {
+    if (!activeItem || !currentDb) return;
+    const timer = setTimeout(() => {
+      api.setViewFilterSort(activeItem.name, activeItem.kind, activeItem.viewType, { filters, sorts }).catch(() => {});
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [filters, sorts, activeItem, currentDb]);
+
   // Derive column names for kanban/calendar views
   // TODO: groupByCol/titleCol default to the second column — a column-picker UI
   // would let users choose explicitly instead of relying on this heuristic.
@@ -431,10 +467,19 @@ export default function App() {
               onCreateQueryPage={createQueryPage}
               onRefresh={refresh}
             />
+            <FilterSortBar
+              columns={columns}
+              columnOptions={columnOptions}
+              activeTableName={activeItem.name}
+              filters={filters}
+              sorts={sorts}
+              onFiltersChange={setFilters}
+              onSortsChange={setSorts}
+            />
             {error && <div className="error-bar">{error}</div>}
             {activeItem.viewType === "table" && (
               <TableView
-                rows={rows}
+                rows={filteredRows}
                 columns={columns}
                 activeItem={activeItem}
                 columnOptions={columnOptions}
@@ -445,7 +490,7 @@ export default function App() {
             )}
             {activeItem.viewType === "kanban" && (
               <KanbanView
-                rows={rows}
+                rows={filteredRows}
                 groupByCol={colNames[colNames.length > 1 ? 1 : 0] ?? ""}
                 titleCol={colNames[colNames.length > 1 ? 1 : 0] ?? ""}
                 columns={colNames}
@@ -453,7 +498,7 @@ export default function App() {
             )}
             {activeItem.viewType === "calendar" && (
               <CalendarView
-                rows={rows}
+                rows={filteredRows}
                 dateCol={colNames.find((c) => /date|time|created|updated/i.test(c)) ?? colNames[colNames.length - 1] ?? ""}
                 titleCol={colNames[colNames.length > 1 ? 1 : 0] ?? ""}
               />

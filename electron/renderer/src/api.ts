@@ -1,6 +1,6 @@
 // Typed wrapper around the preload-exposed IPC bridge
 
-import type { QueryPage, ColumnInfo, ColumnOption } from "./data";
+import type { QueryPage, ColumnInfo, ColumnOption, ViewFilterSort } from "./data";
 
 export interface ColumnDef {
   name: string;
@@ -44,6 +44,9 @@ interface DataBookAPI {
 
   getColumnOrder(table: string): Promise<string[]>;
   setColumnOrder(table: string, columns: string[]): Promise<void>;
+
+  getViewFilterSort(itemName: string, itemKind: string, viewType: string): Promise<ViewFilterSort | null>;
+  setViewFilterSort(itemName: string, itemKind: string, viewType: string, config: ViewFilterSort): Promise<void>;
 }
 
 declare global {

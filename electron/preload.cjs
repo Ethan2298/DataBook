@@ -45,4 +45,8 @@ contextBridge.exposeInMainWorld('databook', {
   // Column Order
   getColumnOrder: (table) => ipcRenderer.invoke('db:getColumnOrder', table),
   setColumnOrder: (table, columns) => ipcRenderer.invoke('db:setColumnOrder', table, columns),
+
+  // View Filter/Sort
+  getViewFilterSort: (itemName, itemKind, viewType) => ipcRenderer.invoke('db:getViewFilterSort', itemName, itemKind, viewType),
+  setViewFilterSort: (itemName, itemKind, viewType, config) => ipcRenderer.invoke('db:setViewFilterSort', itemName, itemKind, viewType, config),
 });
