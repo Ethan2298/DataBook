@@ -65,4 +65,11 @@ contextBridge.exposeInMainWorld('databook', {
   getTableHistory: (table, limit, offset) => ipcRenderer.invoke('db:getTableHistory', table, limit, offset),
   getRowHistory: (table, rowPk) => ipcRenderer.invoke('db:getRowHistory', table, rowPk),
   revertChange: (historyId) => ipcRenderer.invoke('db:revertChange', historyId),
+
+  // Commits
+  getUncommittedChanges: () => ipcRenderer.invoke('db:getUncommittedChanges'),
+  createCommit: (message) => ipcRenderer.invoke('db:createCommit', message),
+  listCommits: (limit, offset) => ipcRenderer.invoke('db:listCommits', limit, offset),
+  getCommitChanges: (commitId) => ipcRenderer.invoke('db:getCommitChanges', commitId),
+  revertToCommit: (commitId) => ipcRenderer.invoke('db:revertToCommit', commitId),
 });

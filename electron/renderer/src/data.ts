@@ -104,3 +104,11 @@ export interface RowHistoryEntry {
   new_data: Record<string, unknown> | null;
   created_at: string;
 }
+
+export interface Commit {
+  id: number;
+  database: string;
+  message: string;
+  created_at: string;
+  change_count: number;
+}

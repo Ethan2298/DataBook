@@ -1,6 +1,6 @@
 // Typed wrapper around the preload-exposed IPC bridge
 
-import type { QueryPage, ColumnInfo, ColumnOption, ColumnMetadata, ColumnMetadataMap, ViewFilterSort, RowHistoryEntry } from "./data";
+import type { QueryPage, ColumnInfo, ColumnOption, ColumnMetadata, ColumnMetadataMap, ViewFilterSort, RowHistoryEntry, Commit } from "./data";
 
 export interface ColumnDef {
   name: string;
@@ -62,6 +62,12 @@ interface DataBookAPI {
   getTableHistory(table: string, limit?: number, offset?: number): Promise<RowHistoryEntry[]>;
   getRowHistory(table: string, rowPk: string): Promise<RowHistoryEntry[]>;
   revertChange(historyId: number): Promise<{ action: string; detail: string }>;
+
+  getUncommittedChanges(): Promise<RowHistoryEntry[]>;
+  createCommit(message: string): Promise<Commit>;
+  listCommits(limit?: number, offset?: number): Promise<Commit[]>;
+  getCommitChanges(commitId: number): Promise<RowHistoryEntry[]>;
+  revertToCommit(commitId: number): Promise<{ reverted: number; failed: number; errors: string[] }>;
 }
 
 declare global {

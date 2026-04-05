@@ -724,6 +724,85 @@ server.tool(
   }
 );
 
+// ── Commits ─────────────────────────────────────────────────────────────────
+
+server.tool(
+  "get_uncommitted_changes",
+  "List all uncommitted row changes in the current database. These are changes not yet grouped into a commit.",
+  {},
+  () => {
+    const changes = manager.getUncommittedChanges();
+    if (changes.length === 0) {
+      return { content: [{ type: "text", text: "No uncommitted changes." }] };
+    }
+    const summary = changes.map((c) =>
+      `[${c.action.toUpperCase()}] ${c.table} #${c.row_pk ?? "?"} (${c.created_at})`
+    ).join("\n");
+    return { content: [{ type: "text", text: `${changes.length} uncommitted change(s):\n${summary}` }] };
+  }
+);
+
+server.tool(
+  "create_commit",
+  "Create a commit that groups all current uncommitted changes. Like `git commit`, this saves a checkpoint you can revert to later.",
+  {
+    message: z.string().describe("Commit message describing the changes"),
+  },
+  ({ message }) => {
+    const commit = manager.createCommit(message);
+    return { content: [{ type: "text", text: `Commit ${String(commit.id).padStart(7, "0")} created: "${commit.message}" (${commit.change_count} changes)` }] };
+  }
+);
+
+server.tool(
+  "list_commits",
+  "List all commits for the current database, newest first.",
+  {
+    limit: z.number().optional().default(20).describe("Max commits to return"),
+    offset: z.number().optional().default(0).describe("Offset for pagination"),
+  },
+  ({ limit, offset }) => {
+    const commits = manager.listCommits(limit, offset);
+    if (commits.length === 0) {
+      return { content: [{ type: "text", text: "No commits yet." }] };
+    }
+    const summary = commits.map((c) =>
+      `${String(c.id).padStart(7, "0")} ${c.message} (${c.change_count} changes, ${c.created_at})`
+    ).join("\n");
+    return { content: [{ type: "text", text: `${commits.length} commit(s):\n${summary}` }] };
+  }
+);
+
+server.tool(
+  "get_commit_changes",
+  "List the row changes included in a specific commit.",
+  {
+    commit_id: z.number().describe("The commit ID to inspect"),
+  },
+  ({ commit_id }) => {
+    const changes = manager.getCommitChanges(commit_id);
+    if (changes.length === 0) {
+      return { content: [{ type: "text", text: "No changes in this commit." }] };
+    }
+    const summary = changes.map((c) =>
+      `[${c.action.toUpperCase()}] ${c.table} #${c.row_pk ?? "?"} (${c.created_at})`
+    ).join("\n");
+    return { content: [{ type: "text", text: `${changes.length} change(s):\n${summary}` }] };
+  }
+);
+
+server.tool(
+  "revert_to_commit",
+  "Revert the database to the state at a specific commit. Undoes all changes made after that commit, like `git reset`.",
+  {
+    commit_id: z.number().describe("The commit ID to revert to"),
+  },
+  ({ commit_id }) => {
+    const result = manager.revertToCommit(commit_id);
+    return { content: [{ type: "text", text: `Reverted to commit ${String(commit_id).padStart(7, "0")}: ${result.reverted} change(s) undone, ${result.failed} failed.` }] };
+  }
+);
+
 // ── Start server ─────────────────────────────────────────────────────────────
 
 async function main() {

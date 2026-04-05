@@ -87,6 +87,13 @@ handle('db:getTableHistory', (m, table, limit, offset) => m.getTableHistory(tabl
 handle('db:getRowHistory', (m, table, rowPk) => m.getRowHistory(table, rowPk));
 handle('db:revertChange', (m, historyId) => m.revertChange(historyId));
 
+// ── Commits ───────────────────────────────────────────────────────────────
+handle('db:getUncommittedChanges', (m) => m.getUncommittedChanges());
+handle('db:createCommit', (m, message) => m.createCommit(message));
+handle('db:listCommits', (m, limit, offset) => m.listCommits(limit ?? 50, offset ?? 0));
+handle('db:getCommitChanges', (m, commitId) => m.getCommitChanges(commitId));
+handle('db:revertToCommit', (m, commitId) => m.revertToCommit(commitId));
+
 // ── File watcher for external changes (e.g. MCP server) ─────────────────────
 
 let mainWindow = null;

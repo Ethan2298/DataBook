@@ -112,6 +112,15 @@ export class DatabaseManager {
         ON row_history (database, "table", created_at);
       CREATE INDEX IF NOT EXISTS idx_row_history_row
         ON row_history (database, "table", row_pk);
+
+      CREATE TABLE IF NOT EXISTS commits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        database TEXT NOT NULL,
+        message TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_commits_database
+        ON commits (database, created_at);
     `);
 
     // Migration: add reverted_at column to row_history if missing
@@ -120,6 +129,14 @@ export class DatabaseManager {
       .get() as { cnt: number };
     if (hasRevertedAt.cnt === 0) {
       this.metaDb.exec(`ALTER TABLE row_history ADD COLUMN reverted_at TEXT DEFAULT NULL`);
+    }
+
+    // Migration: add commit_id column to row_history if missing
+    const hasCommitId = this.metaDb
+      .prepare(`SELECT COUNT(*) as cnt FROM pragma_table_info('row_history') WHERE name = 'commit_id'`)
+      .get() as { cnt: number };
+    if (hasCommitId.cnt === 0) {
+      this.metaDb.exec(`ALTER TABLE row_history ADD COLUMN commit_id INTEGER DEFAULT NULL`);
     }
 
     // Migrate existing column_options into column_metadata
@@ -656,6 +673,121 @@ export class DatabaseManager {
     return result;
   }
 
+  // ── Commits ─────────────────────────────────────────────────────────────────
+
+  getUncommittedChanges(): RowHistoryEntry[] {
+    const dbName = this.getCurrentDbName();
+    const rows = this.metaDb
+      .prepare(
+        `SELECT id, database, "table" as tbl, row_pk, action, old_data, new_data, created_at
+         FROM row_history
+         WHERE database = ? AND commit_id IS NULL AND reverted_at IS NULL
+         ORDER BY id DESC`
+      )
+      .all(dbName) as RawHistoryRow[];
+    return rows.map(parseHistoryRow);
+  }
+
+  createCommit(message: string): Commit {
+    const dbName = this.getCurrentDbName();
+    const now = new Date().toISOString();
+
+    const tx = this.metaDb.transaction(() => {
+      // Count uncommitted changes
+      const { cnt } = this.metaDb
+        .prepare(`SELECT COUNT(*) as cnt FROM row_history WHERE database = ? AND commit_id IS NULL AND reverted_at IS NULL`)
+        .get(dbName) as { cnt: number };
+      if (cnt === 0) {
+        throw new Error("Nothing to commit — no uncommitted changes");
+      }
+
+      // Create commit record
+      const result = this.metaDb
+        .prepare(`INSERT INTO commits (database, message, created_at) VALUES (?, ?, ?)`)
+        .run(dbName, message, now);
+
+      const commitId = Number(result.lastInsertRowid);
+
+      // Assign all uncommitted history entries to this commit
+      this.metaDb
+        .prepare(`UPDATE row_history SET commit_id = ? WHERE database = ? AND commit_id IS NULL AND reverted_at IS NULL`)
+        .run(commitId, dbName);
+
+      return { id: commitId, database: dbName, message, created_at: now, change_count: cnt } as Commit;
+    });
+
+    return tx();
+  }
+
+  listCommits(limit = 50, offset = 0): Commit[] {
+    const dbName = this.getCurrentDbName();
+    const rows = this.metaDb
+      .prepare(
+        `SELECT c.id, c.database, c.message, c.created_at,
+                (SELECT COUNT(*) FROM row_history rh WHERE rh.commit_id = c.id) as change_count
+         FROM commits c
+         WHERE c.database = ?
+         ORDER BY c.id DESC
+         LIMIT ? OFFSET ?`
+      )
+      .all(dbName, limit, offset) as Commit[];
+    return rows;
+  }
+
+  getCommitChanges(commitId: number): RowHistoryEntry[] {
+    const dbName = this.getCurrentDbName();
+    const rows = this.metaDb
+      .prepare(
+        `SELECT id, database, "table" as tbl, row_pk, action, old_data, new_data, created_at
+         FROM row_history
+         WHERE database = ? AND commit_id = ?
+         ORDER BY id DESC`
+      )
+      .all(dbName, commitId) as RawHistoryRow[];
+    return rows.map(parseHistoryRow);
+  }
+
+  revertToCommit(commitId: number): { reverted: number; failed: number; errors: string[] } {
+    const dbName = this.getCurrentDbName();
+
+    // Verify commit exists
+    const commit = this.metaDb
+      .prepare(`SELECT id FROM commits WHERE id = ? AND database = ?`)
+      .get(commitId, dbName);
+    if (!commit) throw new Error(`Commit ${commitId} not found`);
+
+    // Get the max history ID that belongs to this commit
+    const maxRow = this.metaDb
+      .prepare(`SELECT MAX(id) as max_id FROM row_history WHERE commit_id = ? AND database = ?`)
+      .get(commitId, dbName) as { max_id: number | null };
+
+    if (maxRow.max_id === null) throw new Error(`Commit ${commitId} has no associated changes`);
+
+    // Collect IDs upfront so revert-generated history entries aren't included
+    const entryIds = this.metaDb
+      .prepare(
+        `SELECT id FROM row_history
+         WHERE database = ? AND id > ? AND reverted_at IS NULL
+         ORDER BY id DESC`
+      )
+      .all(dbName, maxRow.max_id) as { id: number }[];
+
+    let reverted = 0;
+    let failed = 0;
+    const errors: string[] = [];
+    for (const entry of entryIds) {
+      try {
+        this.revertChange(entry.id);
+        reverted++;
+      } catch (err) {
+        failed++;
+        errors.push(`Entry ${entry.id}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    return { reverted, failed, errors };
+  }
+
   // ── Query Pages ──────────────────────────────────────────────────────────────
 
   createQueryPage(
@@ -1102,6 +1234,14 @@ export interface RowHistoryEntry {
   old_data: Record<string, unknown> | null;
   new_data: Record<string, unknown> | null;
   created_at: string;
+}
+
+export interface Commit {
+  id: number;
+  database: string;
+  message: string;
+  created_at: string;
+  change_count: number;
 }
 
 interface RawHistoryRow {
