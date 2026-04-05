@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { ViewType, ActiveItem } from "../data";
 
 interface TopBarProps {
@@ -7,8 +7,7 @@ interface TopBarProps {
   onViewChange: (view: ViewType) => void;
   onCreateQueryPage: (name: string, sql: string, viewType: string) => void;
   onRefresh: () => void;
-  historyOpen?: boolean;
-  onToggleHistory?: () => void;
+  onRenameView?: (oldName: string, newName: string) => void;
 }
 
 const VIEW_OPTIONS: { type: ViewType; label: string; icon: JSX.Element }[] = [
@@ -50,10 +49,21 @@ const VIEW_OPTIONS: { type: ViewType; label: string; icon: JSX.Element }[] = [
   },
 ];
 
-export default function TopBar({ activeItem, loading, onViewChange, onCreateQueryPage, onRefresh, historyOpen, onToggleHistory }: TopBarProps) {
+export default function TopBar({ activeItem, loading, onViewChange, onCreateQueryPage, onRefresh, onRenameView }: TopBarProps) {
   const [showSaveInput, setShowSaveInput] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Focus and select all when entering edit mode
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
 
   const handleSave = () => {
     const trimmed = saveName.trim();
@@ -67,11 +77,50 @@ export default function TopBar({ activeItem, loading, onViewChange, onCreateQuer
     setShowSaveInput(false);
   };
 
+  const startEditing = () => {
+    if (activeItem.kind !== "query_page" || !onRenameView) return;
+    setEditName(activeItem.name);
+    setEditing(true);
+  };
+
+  const commitRename = () => {
+    const trimmed = editName.trim();
+    setEditing(false);
+    if (!trimmed || trimmed === activeItem.name || !onRenameView) return;
+    onRenameView(activeItem.name, trimmed);
+  };
+
+  const cancelRename = () => {
+    setEditing(false);
+  };
+
+  const isRenameable = activeItem.kind === "query_page" && !!onRenameView;
+
   return (
     <div className="topbar">
       <div className="topbar-left">
-        <span className="topbar-title">{activeItem.name}</span>
-        <span className="topbar-kind">{activeItem.kind === "table" ? "table" : activeItem.viewType}</span>
+        {editing ? (
+          <input
+            ref={inputRef}
+            type="text"
+            className="topbar-title-input"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitRename();
+              if (e.key === "Escape") cancelRename();
+            }}
+            onBlur={commitRename}
+          />
+        ) : (
+          <span
+            className={`topbar-title ${isRenameable ? "topbar-title-editable" : ""}`}
+            onClick={isRenameable ? startEditing : undefined}
+            title={isRenameable ? "Click to rename" : undefined}
+          >
+            {activeItem.name}
+          </span>
+        )}
 
         <div role="group" aria-label="View type" className="topbar-tabs">
           {VIEW_OPTIONS.map(({ type, label, icon }) => (
@@ -88,15 +137,6 @@ export default function TopBar({ activeItem, loading, onViewChange, onCreateQuer
         </div>
       </div>
       <div className="topbar-right">
-        {onToggleHistory && (
-          <button className={`action-btn ${historyOpen ? "active" : ""}`} onClick={onToggleHistory} title="Row history">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-            History
-          </button>
-        )}
         <button
           className="action-btn"
           onClick={onRefresh}

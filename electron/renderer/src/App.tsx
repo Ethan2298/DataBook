@@ -8,7 +8,6 @@ import CalendarView from "./components/CalendarView";
 import EmptyState from "./components/EmptyState";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ColumnPicker from "./components/ColumnPicker";
-import HistoryPanel from "./components/HistoryPanel";
 import ToastContainer from "./components/Toast";
 import ConfirmDialog from "./components/ConfirmDialog";
 import type { ToastItem } from "./components/Toast";
@@ -57,8 +56,7 @@ export default function App() {
   const [filters, setFilters] = useState<FilterGroup>({ conjunction: "and", rules: [] });
   const [sorts, setSorts] = useState<SortRule[]>([]);
 
-  // History panel
-  const [showHistory, setShowHistory] = useState(false);
+  // (History panel moved to sidebar source control)
 
   // Computed filtered/sorted rows
   const filteredRows = useMemo(
@@ -531,6 +529,22 @@ export default function App() {
     }
   }, [viewConfig, addToast]);
 
+  // Rename query page
+  const renameQueryPage = useCallback(async (oldName: string, newName: string) => {
+    try {
+      const updated = await api.updateQueryPage(oldName, { name: newName });
+      setQueryPages((prev) => prev.map((p) => p.name === oldName ? updated : p));
+      setActiveItem((prev) => prev && prev.kind === "query_page" && prev.name === oldName
+        ? { ...prev, name: newName }
+        : prev
+      );
+      addToast("View renamed");
+    } catch (err) {
+      setError(String(err));
+      addToast(String(err), "error");
+    }
+  }, [addToast]);
+
   // Delete query page
   const deleteQueryPage = useCallback(async (name: string) => {
     try {
@@ -702,6 +716,8 @@ export default function App() {
         onDropTable={handleDropTable}
         onSelectQueryPage={selectQueryPage}
         onDeleteQueryPage={handleDeleteQueryPage}
+        onCreateQueryPage={createQueryPage}
+        onDataChange={refresh}
       />
       <main className="content">
         <ErrorBoundary>
@@ -713,8 +729,7 @@ export default function App() {
               onViewChange={changeView}
               onCreateQueryPage={createQueryPage}
               onRefresh={refresh}
-              historyOpen={showHistory}
-              onToggleHistory={() => setShowHistory((v) => !v)}
+              onRenameView={renameQueryPage}
             />
             <FilterSortBar
               columns={columns}
@@ -759,8 +774,7 @@ export default function App() {
                 />
               </div>
             )}
-            <div className="content-with-history">
-              <div className="content-main">
+            <div className="content-views">
             {activeItem.viewType === "table" && (
               <TableView
                 rows={filteredRows}
@@ -811,14 +825,6 @@ export default function App() {
                 />
               );
             })()}
-              </div>
-              {showHistory && (
-                <HistoryPanel
-                  tableName={activeItem.kind === "table" ? activeItem.name : (activeItem.sql.match(/FROM\s+["`']?(\w+)["`']?/i)?.[1] ?? activeItem.name)}
-                  onClose={() => setShowHistory(false)}
-                  onRevert={refresh}
-                />
-              )}
             </div>
           </>
         ) : (
